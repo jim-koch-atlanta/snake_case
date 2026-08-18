@@ -1,0 +1,16 @@
+[project]
+name = "draft-copilot"
+version = "0.0.0"
+description = "Fantasy football draft-day decision support (disposable, one league, one draft)."
+requires-python = ">=3.12"
+dependencies = []  # engine + config parser are stdlib-only; the ESPN poller is too
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

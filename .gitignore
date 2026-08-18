@@ -1,2 +1,15 @@
+# Secrets / private league data (never commit)
 .env
 docs/league-config.md
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Tooling caches / venv (uv, pytest, ruff self-ignore too, but be explicit)
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Throwaway ESPN poller dumps (--dump). Rest of data/ IS tracked (crosswalk etc.)
+data/draft_snapshots/

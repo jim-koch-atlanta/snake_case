@@ -55,7 +55,7 @@ uv run python -m tools.mock_replay <draft_json>  # replay a recorded mock draft 
 
 - Python 3.12, `uv`, `ruff`, dataclasses (not pydantic — no validation-heavy API surface here), pytest.
 - Type hints everywhere in `engine/`. `sources/` can be looser.
-- No premature abstraction. This code is disposable after [DATE+1]. Duplicated code beats a framework.
+- No premature abstraction. This code is disposable after 2026-08-29. Duplicated code beats a framework.
 - When touching the valuation math, write the test first with a hand-computed tiny example (4 teams, 3 rounds).
 
 ## Priority order (when in doubt, work on the lowest unfinished number)

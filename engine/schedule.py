@@ -9,6 +9,11 @@ Model: a snake draft is a fixed grid of `num_rounds x num_teams` slots, one slot
 per team per round. A keeper "kept in round X" consumes that team's round-X
 slot (it becomes a keeper pick, not a live pick). Same-round collisions cascade
 to earlier rounds — see resolve_keeper_rounds.
+
+A traded pick reassigns *ownership* of one team's original round-N live slot to
+another team: the pick stays at the same overall position in the snake, but a
+different manager selects. Trades never change the total live-pick count (228),
+only how they're distributed across teams. You can't trade a slot you keep.
 """
 
 from __future__ import annotations
@@ -27,12 +32,24 @@ class Keeper:
 
 
 @dataclass(frozen=True)
+class TradedPick:
+    """One traded draft slot: `from_team_id`'s round-N pick now belongs to `to_team_id`."""
+
+    from_team_id: int
+    to_team_id: int
+    round: int
+
+
+@dataclass(frozen=True)
 class Pick:
     """One slot in the draft grid.
 
     `round` is where the pick actually sits. For keepers, `declared_round` is the
     round the player was declared kept in — it equals `round` unless a same-round
     collision shifted the slot earlier.
+
+    `team_id` is who actually picks (post-trade). `original_team_id` is whose slot
+    it was in the snake grid; it differs from `team_id` only for traded picks.
     """
 
     overall: int  # 1-based, 1..num_rounds*num_teams
@@ -42,6 +59,11 @@ class Pick:
     kind: str  # "keeper" | "live"
     player: str | None = None  # set for keepers
     declared_round: int | None = None  # set for keepers
+    original_team_id: int | None = None  # set only when traded (else same as team_id)
+
+    @property
+    def is_traded(self) -> bool:
+        return self.original_team_id is not None
 
 
 def team_at_slot(draft_order: list[int], round_: int, pick_in_round: int) -> int:
@@ -95,10 +117,13 @@ def build_pick_schedule(
     draft_order: list[int],
     num_rounds: int,
     keepers: list[Keeper],
+    trades: list[TradedPick] | None = None,
 ) -> list[Pick]:
     """Build the full ordered pick schedule (all slots, keeper + live).
 
     `draft_order` is team_ids in round-1 order. Result is ordered by overall pick.
+    Trades reassign ownership of a team's round-N slot; keeper slots are resolved
+    first, so trading a slot a team keeps is a hard error.
     """
     if not draft_order:
         raise ValueError("draft_order is empty")
@@ -122,6 +147,30 @@ def build_pick_schedule(
         for k, r in zip(team_keepers, actual):
             keeper_slot[(team_id, r)] = k
 
+    # Trades reassign ownership of an original (team, round) slot.
+    owner: dict[tuple[int, int], int] = {}
+    for t in trades or []:
+        if t.from_team_id not in team_set:
+            raise ValueError(f"trade from unknown team_id {t.from_team_id}")
+        if t.to_team_id not in team_set:
+            raise ValueError(f"trade to unknown team_id {t.to_team_id}")
+        if t.from_team_id == t.to_team_id:
+            raise ValueError(f"team {t.from_team_id} traded round {t.round} to itself")
+        if not (1 <= t.round <= num_rounds):
+            raise ValueError(f"traded round {t.round} outside 1..{num_rounds}")
+        key = (t.from_team_id, t.round)
+        if key in keeper_slot:
+            raise ValueError(
+                f"team {t.from_team_id} traded its round-{t.round} pick, but that slot "
+                "is used by a keeper (after collision resolution) — cannot be both"
+            )
+        if key in owner:
+            raise ValueError(
+                f"team {t.from_team_id}'s round-{t.round} pick traded more than once "
+                f"(to {owner[key]} and {t.to_team_id})"
+            )
+        owner[key] = t.to_team_id
+
     n = len(draft_order)
     schedule: list[Pick] = []
     for round_ in range(1, num_rounds + 1):
@@ -142,13 +191,15 @@ def build_pick_schedule(
                     )
                 )
             else:
+                new_owner = owner.get((team_id, round_))
                 schedule.append(
                     Pick(
                         overall=overall,
                         round=round_,
                         pick_in_round=pir,
-                        team_id=team_id,
+                        team_id=new_owner if new_owner is not None else team_id,
                         kind="live",
+                        original_team_id=team_id if new_owner is not None else None,
                     )
                 )
     return schedule

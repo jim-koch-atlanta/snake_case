@@ -17,6 +17,7 @@ from pathlib import Path
 
 from engine.schedule import (
     Keeper,
+    TradedPick,
     build_pick_schedule,
     live_picks,
     team_live_picks,
@@ -44,6 +45,7 @@ class LeagueConfig:
     teams: list[Team]  # ordered by draft slot
     num_rounds: int
     keepers: list[Keeper]
+    trades: list[TradedPick]
     my_team_id: int
 
     @property
@@ -163,6 +165,43 @@ def _parse_keepers(text: str, teams: list[Team]) -> list[Keeper]:
     return keepers
 
 
+def _parse_trades(text: str, teams: list[Team]) -> list[TradedPick]:
+    """Parse '## Traded picks'. Absent section or empty table = no trades (legal)."""
+    name_to_id = {t.name.lower(): t.team_id for t in teams}
+    ids = {t.team_id for t in teams}
+
+    def resolve(cell: str, row: str) -> int:
+        tid = name_to_id.get(cell.lower())
+        if tid is None and cell.isdigit() and int(cell) in ids:
+            tid = int(cell)
+        if tid is None:
+            raise ConfigError(f"traded-pick row references unknown team '{cell}': {row}")
+        return tid
+
+    trades: list[TradedPick] = []
+    for line in _section(text, "traded picks"):
+        if "|" not in line:
+            continue
+        cells = [c.strip().strip("`").strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) != 3:
+            continue
+        from_s, to_s, round_s = cells
+        if from_s.lower() == "from":  # header row
+            continue
+        if set(from_s) <= set("-: "):  # separator row
+            continue
+        if any("TODO" in c.upper() for c in cells) or not round_s.isdigit():
+            continue  # unfilled example row — trades are optional, so not fatal
+        trades.append(
+            TradedPick(
+                from_team_id=resolve(from_s, line),
+                to_team_id=resolve(to_s, line),
+                round=int(round_s),
+            )
+        )
+    return trades
+
+
 def load_league_config(path: Path = CONFIG_PATH) -> LeagueConfig:
     if not path.exists():
         raise FileNotFoundError(f"league config not found: {path}")
@@ -174,6 +213,7 @@ def load_league_config(path: Path = CONFIG_PATH) -> LeagueConfig:
         teams=teams,
         num_rounds=_parse_num_rounds(text),
         keepers=_parse_keepers(text, teams),
+        trades=_parse_trades(text, teams),
         my_team_id=_parse_my_team(text, teams),
     )
 
@@ -181,7 +221,9 @@ def load_league_config(path: Path = CONFIG_PATH) -> LeagueConfig:
 def main() -> int:
     try:
         cfg = load_league_config()
-        schedule = build_pick_schedule(cfg.draft_order, cfg.num_rounds, cfg.keepers)
+        schedule = build_pick_schedule(
+            cfg.draft_order, cfg.num_rounds, cfg.keepers, cfg.trades
+        )
     except (ConfigError, FileNotFoundError, ValueError) as e:
         print(f"CONFIG ERROR: {e}", file=sys.stderr)
         return 1
@@ -191,12 +233,33 @@ def main() -> int:
         f"League {cfg.league_id} season {cfg.season}: {len(cfg.teams)} teams, "
         f"{cfg.num_rounds} rounds -> {len(schedule)} slots"
     )
-    print(f"Keepers: {len(schedule) - len(live)} | live picks: {len(live)}")
+    print(
+        f"Keepers: {len(schedule) - len(live)} | live picks: {len(live)} "
+        f"| trades: {len(cfg.trades)}"
+    )
 
+    names = {t.team_id: t.name for t in cfg.teams}
     mine = team_live_picks(schedule, cfg.my_team_id)
     print(f"\nMy live picks (team_id {cfg.my_team_id}), {len(mine)} total:")
     for p in mine:
-        print(f"  overall {p.overall:>3}  round {p.round:>2}  (slot {p.pick_in_round} in round)")
+        note = f"  <- acquired from {names.get(p.original_team_id, p.original_team_id)}" if p.is_traded else ""
+        print(
+            f"  overall {p.overall:>3}  round {p.round:>2}  "
+            f"(slot {p.pick_in_round} in round){note}"
+        )
+
+    lost = [
+        p
+        for p in live
+        if p.is_traded and p.original_team_id == cfg.my_team_id
+    ]
+    if lost:
+        print("\nMy original picks traded away:")
+        for p in lost:
+            print(
+                f"  overall {p.overall:>3}  round {p.round:>2}  "
+                f"-> {names.get(p.team_id, p.team_id)}"
+            )
     return 0
 
 

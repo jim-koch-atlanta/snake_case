@@ -1,7 +1,7 @@
 # Draft Copilot — CLAUDE.md
 
 Fantasy football draft-day decision support tool for a 12-team ESPN league.
-**Hard deadline: the live draft is Friday [DATE]. Days remaining matter more than elegance.**
+**Hard deadline: the live draft is Friday, August 28, 2026. Days remaining matter more than elegance.**
 
 ## What this is (and is not)
 

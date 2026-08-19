@@ -11,12 +11,14 @@ Fantasy football draft-day decision support tool for a 12-team ESPN league.
 
 ## League facts (canonical — do not invent)
 
-- 12 teams, snake draft, order already set (see `docs/league-config.md`)
+- 12 teams, snake draft, order already set (see `docs/league-config.toml`)
 - Starters: 1 QB, 1 RB, 1 RB/WR, 3 WR/TE, 2 DL, 2 LB, 2 DB, 1 K
 - Roster: 13 starters + 9 BE + 3 IR = 25 spots per team. IR is not drafted, so 22 *draftable* slots → 22 rounds × 12 teams = 264 total draft slots. After 3 keepers, 19 live picks per team.
-- **Keepers: 3 per team, kept in the round originally drafted.** 36 of 264 slots are pre-assigned. The pick schedule is NOT a pure snake — it must be generated from the keeper assignments in `docs/league-config.md`.
+- **Keepers: 3 per team, kept in the round originally drafted.** 36 of 264 slots are pre-assigned. The pick schedule is NOT a pure snake — it must be generated from the keeper assignments in `docs/league-config.toml`.
   - **Round collisions:** if a team keeps two players originally drafted in the same round X, one is kept at the round-X pick and the next backfills round X−1. Cascade one round earlier for each additional colliding keeper (so three keepers from round X occupy X, X−1, X−2). Always shift to the *earlier* round.
-- Scoring: half-PPR offense + IDP. Exact scoring rules live in `docs/league-config.md`. **Never use pre-computed fantasy points from any external source — always recompute from stat-level projections using our scoring.**
+- Scoring: custom offense + IDP, defined entirely in `docs/league-config.toml`. **Never use pre-computed fantasy points from any external source — always recompute from stat-level projections using our scoring.**
+- **Points per reception is a config value, not a mode.** This league is **0.2 per reception** — it is *not* half-PPR, and nothing in the code may assume 0.5, 1.0, or a "PPR / half-PPR / standard" preset. The value lives at `[scoring] receiving.reception` and flows through the same stat-line × scoring-rule path as every other stat. Changing that one number must re-derive every valuation with no other edit.
+  - Consequence to keep in mind: at 0.2, a 100-catch season is worth 20 points, not 50. Reception volume separates WRs far less than in a half-PPR league, so target-hog possession receivers compress toward the pack and the WR/TE replacement baselines sit closer together. Do not import PPR-flavored rankings or tiers from anywhere.
 
 ## Architecture invariants
 
@@ -28,7 +30,7 @@ Fantasy football draft-day decision support tool for a 12-team ESPN league.
 
 ## Valuation model (the actual product)
 
-- **VOR baseline from OUR lineup**, per position, 12 teams: replacement ≈ RB19-20 (1 slot + flex share), WR ≈ WR41 (3 WR/TE slots + flex share), TE competes with WR38-41 (expect ~top-4 TEs only to clear the bar), QB12, K12, DL24, LB24, DB24.
+- **VOR baseline from OUR lineup**, per position, 12 teams: replacement ≈ RB19-20 (1 slot + flex share), WR ≈ WR41 (3 WR/TE slots + flex share), TE competes with WR38-41 (expect ~top-4 TEs only to clear the bar), QB12, K12, DL24, LB24, DB24. These ranks come from *slot counts*, so they hold regardless of scoring — but the point *spread* between a baseline and the players above it is scoring-dependent, and at 0.2/reception the WR spread is flatter than PPR intuition suggests (see League facts).
 - **VONA / survival model**: for each candidate, P(survives to my next live pick) from keeper-adjusted ADP (drop the 36 keepers, re-rank survivors, map rank → live pick number) with per-position σ. **Widen σ substantially for IDP** — IDP ADP is thin and noisy.
 - Monte Carlo the intervening picks (~1000 runs). Opponent rosters constrain positional need — keeper sets are known, so filled slots are hard constraints, not priors.
 - Recommendation = maximize `value(now) − E[best available at that position at my next pick]`, subject to the **legal-lineup feasibility guard**: `picks_remaining − mandatory_unfilled_slots` must never go negative. `mandatory_unfilled_slots` counts *every* still-unfillable starting slot — QB, RB, RB/WR, 3×WR/TE, 2DL, 2LB, 2DB, K (all 13 starters) — where a flex slot (RB/WR, WR/TE) is satisfied by any eligible position already rostered. In practice RB/WR/TE are over-drafted and never the binding constraint; QB, K, and the 6 IDP slots are what actually trip this. Surface it in the UI, red at 0.

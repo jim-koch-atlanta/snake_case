@@ -1,6 +1,7 @@
 # Secrets / private league data (never commit)
 .env
-docs/league-config.md
+docs/league-config.toml
+docs/player-notes.md
 
 # Python bytecode
 __pycache__/

@@ -1,9 +1,9 @@
 # Draft Copilot
 
 Live draft-day decision support for a 12-team ESPN fantasy football league with
-half-PPR + IDP scoring and round-based keepers. Runs locally, renders a
-recommendation board on a second monitor, and stays useful even when ESPN's
-API doesn't cooperate.
+custom scoring (0.2 points per reception, full IDP) and round-based keepers.
+Runs locally, renders a recommendation board on a second monitor, and stays
+useful even when ESPN's API doesn't cooperate.
 
 **Not** a general fantasy product. Purpose-built for one league, one draft
 night, then archived.
@@ -16,13 +16,19 @@ night, then archived.
   36 holes in it. Pick gaps vary wildly by round; generic ADP math is wrong.
 - Same 12 managers for years + ESPN's historical draft API = we can model the
   actual humans, not a generic room.
+- Scoring is league-specific, not a preset. Receptions are worth **0.2** here —
+  not standard, not half-PPR, not full PPR — so every public ranking, ADP-derived
+  value and "expert" tier is computed against the wrong scoring. Player values
+  are recomputed from stat-level projections using the rules in
+  `docs/league-config.toml`; change `receiving.reception` and the whole board
+  re-derives. Nothing in the engine hardcodes a PPR assumption.
 
 ## Quick start
 
 ```bash
 uv sync
 cp .env.example .env        # add SWID / espn_s2 / LEAGUE_ID
-# Fill docs/league-config.md (roster slots done; add keepers, order, scoring)
+# Fill docs/league-config.toml (roster/order/trades done; add keepers + scoring)
 uv run pytest
 uv run python -m app.serve  # http://localhost:8000
 ```
@@ -35,7 +41,7 @@ sources/    ESPN API, 4for4 CSV loader, Sleeper, crosswalk builder
 app/        FastAPI + one HTML page (htmx), manual pick entry + board
 tools/      mock-draft recorder/replayer, one-off scripts
 data/       crosswalk.csv, projection snapshots, league history dumps
-docs/       league-config.md (canonical league facts), decisions log
+docs/       league-config.toml (canonical league facts), decisions log
 ```
 
 ## Draft-night runbook (draft − 0)

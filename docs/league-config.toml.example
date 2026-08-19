@@ -1,0 +1,165 @@
+# League Configuration (canonical)
+#
+# Everything the engine knows about the league lives here. If it's not here, the code must not assume it.
+
+[basics]
+platform = "ESPN"
+league_id = 12345          # TODO: replace
+season = 2026
+teams = 12                 # consistency check; must equal len(draft_order)
+draft_type = "snake"
+pick_clock_seconds = 90    # TODO: verify in ESPN league settings
+my_team = "Team Name 6"    # TODO: must match a `name` in draft_order below
+draft_datetime = "2026-08-28T10:00:00-04:00"
+
+# Roster ---------------------------------------------------------------------
+# 13 starters + 9 BE + 3 IR = 25 spots. IR is not drafted, so 22 draftable
+# slots -> 22 rounds x 12 teams = 264 total. After 3 keepers: 19 live picks
+# per team, 228 live picks total.
+
+[roster.slots]
+qb = 1
+rb = 1
+rb_wr = 1
+wr_te = 3
+dl = 2
+lb = 2
+db = 2
+k = 1
+be = 9
+ir = 3      # not drafted; loader excludes it from round count
+
+# Draft order ----------------------------------------------------------------
+# draft.order — round-1 order. `slot` duplicates list position on purpose: the loader
+# asserts slot == index + 1 as a typo guard.
+
+[draft]
+order = [
+  { slot =  1, name = "Team Name 1",  espn_team_id =  1 },
+  { slot =  2, name = "Team Name 2",  espn_team_id =  2 },
+  { slot =  3, name = "Team Name 3",  espn_team_id =  3 },
+  { slot =  4, name = "Team Name 4",  espn_team_id =  4 },
+  { slot =  5, name = "Team Name 5",  espn_team_id =  5 },
+  { slot =  6, name = "Team Name 6",  espn_team_id =  6 },
+  { slot =  7, name = "Team Name 7",  espn_team_id =  7 },
+  { slot =  8, name = "Team Name 8",  espn_team_id =  8 },
+  { slot =  9, name = "Team Name 9",  espn_team_id =  9 },
+  { slot = 10, name = "Team Name 10", espn_team_id = 10 },
+  { slot = 11, name = "Team Name 11", espn_team_id = 11 },
+  { slot = 12, name = "Team Name 12", espn_team_id = 12 },
+]
+
+# Keepers --------------------------------------------------------------------
+# 36 rows in the real config (3 per team) — this defines the real pick
+# schedule. `round` = the round the player was ORIGINALLY drafted in.
+#
+# Same-round collisions: if a team keeps two players both originally drafted
+# in round X, one is kept at round X and the next backfills round X-1
+# (cascading X, X-1, X-2 for three). Always shifts EARLIER. Declare the
+# original round here and let the engine resolve the cascade.
+#
+# Loader enforces (hard errors): exactly 3 per team, 36 total; `team` must
+# match a draft_order name; a team may not keep a round it traded away.
+
+# (still inside [draft])
+keepers = [
+  { team = "Team Name 1", player = "Example Player A", round =  2 },
+  { team = "Team Name 1", player = "Example Player B", round =  7 },
+  { team = "Team Name 1", player = "Example Player C", round =  7 },  # collides -> resolves to round 6
+  # ... 33 more rows (3 per team, all 12 teams)
+]
+
+# Traded picks ---------------------------------------------------------------
+# A trade moves ownership of one team's round-N pick to another team. The pick
+# stays at the same spot in the snake; a different manager makes the selection.
+# Total live picks are unchanged — only the per-team distribution shifts.
+#
+# Loader enforces (hard errors):
+#   - from_team / to_team must be names from draft_order above.
+#   - A team cannot trade a round it keeps in (keeper slots resolve first, so
+#     the check applies AFTER any same-round collision cascade).
+#   - The same (from_team, round) cannot be traded twice.
+#   - No trading to yourself.
+#
+# NOTE: keys are `from_team`/`to_team`, NOT `from`/`to` — `from` is a reserved
+# word in Python and cannot be used as a keyword argument.
+#
+# Leave as an empty list if there are no trades:  trades = []
+
+# (still inside [draft])
+trades = [
+  { from_team = "Team Name 1", to_team = "Team Name 6", round = 19 },
+  { from_team = "Team Name 6", to_team = "Team Name 1", round = 22 },
+]
+
+# Scoring — offense ----------------------------------------------------------
+# Fill from ESPN league settings -> Scoring. Include EVERY non-zero rule.
+# Never use a source's precomputed fantasy points; always recompute from
+# stat lines using these values.
+
+[scoring]
+passing.yards = 0.06
+passing.td = 6.0
+passing.int = -3.0
+passing.2pc = 2.0 # 2-pt passing conversion
+passing.sacked = -0.5
+rushing.yards = 0.1
+rushing.td = 6.0
+rushing.2pr = 2.0 # 2-pt rushing conversion
+receiving.reception = 0.2 # Number of points per recetion
+receiving.yards = 0.1
+receiving.td = 6.0
+receiving.2pre = 2.0 # 2-pt receiving conversion
+
+# Scoring — kicker -----------------------------------------------------------
+
+[scoring.kicker]
+pat = 1.0 # Points for each PAT made
+fgy = 0.1 # Points for each FG made
+fg_0_39 = 0.0 # Points for each FG 0-39 yards
+fg_40_49 = 0.0 # Points for each FG 40-49 yards
+fg_50_plus = 0.0 # Points for each FG 50+ yards
+missed_fg = 0.0 # Points for each missed FG
+
+# Scoring — IDP  /!\ highest-impact section in this file ----------------------
+# Tackle-heavy vs big-play weighting completely changes which IDP positions
+# have VOR spread. Get these exact. All values below are placeholders.
+
+[scoring.idp]
+# /!\ HALFSK is a HALF-sack unit, not a sack. A full sack scores 2 x 1.4 = 2.8.
+# Projections normally report WHOLE sacks, so convert (sacks * 2) before
+# applying this, or the entire pass rush is valued at half its real worth.
+half_sack = 1.4            # HALFSK  — per HALF sack (full sack = 2.8)
+
+solo_tackle = 1.1          # TKS
+assisted_tackle = 0.8      # TKA
+tackle_for_loss = 0.3      # ST      — ESPN labels this "Stuffs"
+pass_defended = 1.4        # PD      — ESPN labels this "Passes Defensed"
+interception = 3.5         # INT
+forced_fumble = 1.8        # FF
+fumble_recovery = 1.8      # FR
+safety = 4.0               # SF
+blocked_kick = 6.0         # BLKK    — blocked punt, PAT or FG (the block itself;
+                           #           returning it for a TD is scoring.misc.blocked_kick_return_td)
+
+# Not scored in this league (were placeholders, now removed): QB hits, and a
+# generic "defensive TD" — defensive scores are itemized in [scoring.misc]
+# as INTTD / FRTD / BLKKRTD.
+
+# Scoring — miscellaneous ----------------------------------------------------
+# Return yardage/TDs and the odd special-teams cases. ESPN's own stat
+# abbreviation is in the comment so these can be matched back to the
+# league settings page.
+
+[scoring.misc]
+kick_return_yards = 0.04   # KR      — per kickoff return yard
+punt_return_yards = 0.08   # PR      — per punt return yard
+kick_return_td = 6.0       # KRTD
+punt_return_td = 6.0       # PRTD
+fumble_recovered_td = 6.0  # FTD     — recovered (own or opponent) returned for TD
+fumbles_lost = -3.0        # FUML    — total fumbles lost
+interception_return_td = 6.0  # INTTD
+fumble_return_td = 6.0     # FRTD
+blocked_kick_return_td = 6.0  # BLKKRTD — blocked punt or FG returned for TD
+two_pt_return = 2.0        # 2PTRET
+one_pt_safety = 1.0        # 1PSF

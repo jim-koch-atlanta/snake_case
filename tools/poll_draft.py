@@ -21,6 +21,10 @@ Notes:
     judge liveness/latency.
   - On the first fetch it prints the draftDetail keys and one raw pick so we can
     confirm field names (e.g. whether picks carry a `keeper` flag).
+  - It ALSO polls the league activity/communication channel, because
+    mDraftDetail is confirmed blind to live drafts. Activity messages carry
+    `targetId` = ESPN player id; if draft picks appear anywhere in the read
+    API, this is the most likely place. Use --no-comms to skip.
 """
 
 from __future__ import annotations
@@ -38,6 +42,11 @@ BASE = (
     "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/"
     "seasons/{season}/segments/0/leagues/{league_id}"
 )
+# Second candidate channel. mDraftDetail is known NOT to update during a live
+# draft (verified 2026-08-20). This endpoint carries the league ACTIVITY feed,
+# whose messages have `targetId` = an ESPN player id and a `messageTypeId`
+# discriminator — so draft selections may well surface here. Untested live.
+COMMS = BASE + "/communication/?view=kona_league_communication"
 ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = ROOT / ".env"
 SNAP_DIR = ROOT / "data" / "draft_snapshots"
@@ -75,6 +84,28 @@ def fetch(url: str, cookie: str) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def poll_comms(url: str, cookie: str, seen: set) -> list[str]:
+    """Return human-readable lines for any activity messages not seen before."""
+    try:
+        data = fetch(url, cookie)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
+            json.JSONDecodeError) as e:
+        return [f"comms error: {type(e).__name__} {e}"]
+    out: list[str] = []
+    for topic in data.get("topics", []) or []:
+        for msg in topic.get("messages", []) or []:
+            mid = msg.get("id")
+            if mid in seen:
+                continue
+            seen.add(mid)
+            out.append(
+                f"ACTIVITY type={topic.get('type')} msgType={msg.get('messageTypeId')} "
+                f"player={msg.get('targetId')} from={msg.get('from')} to={msg.get('to')} "
+                f"for={msg.get('for')}"
+            )
+    return out
+
+
 def describe_pick(p: dict) -> str:
     return (
         f"PICK #{p.get('overallPickNumber'):>3} "
@@ -90,6 +121,8 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="single fetch then exit")
     ap.add_argument("--dump", action="store_true", help="save raw JSON per poll")
     ap.add_argument("--view", default="mDraftDetail")
+    ap.add_argument("--no-comms", action="store_true",
+                    help="skip the league activity/communication channel")
     args = ap.parse_args()
 
     env = load_env(ENV_PATH)
@@ -104,6 +137,7 @@ def main() -> int:
     season = env.get("SEASON", "2026")
     league_id = env["LEAGUE_ID"]
     url = BASE.format(season=season, league_id=league_id) + f"?view={args.view}"
+    comms_url = COMMS.format(season=season, league_id=league_id)
     cookie = f"SWID={env['SWID']}; espn_s2={env['ESPN_S2']}"
 
     print(f"[{ts()}] polling {url}")
@@ -112,6 +146,7 @@ def main() -> int:
         SNAP_DIR.mkdir(parents=True, exist_ok=True)
 
     seen: set = set()
+    seen_msgs: set = set()
     last_status = None
     first = True
     poll_no = 0
@@ -160,6 +195,10 @@ def main() -> int:
                 f"[{ts()}] status: inProgress={status[0]} drafted={status[1]} picks={status[2]}"
             )
             last_status = status
+
+        if not args.no_comms:
+            for line in poll_comms(comms_url, cookie, seen_msgs):
+                print(f"[{ts()}] {line}")
 
         new = [p for p in picks if p.get("overallPickNumber") not in seen]
         new.sort(key=lambda p: p.get("overallPickNumber") or 0)

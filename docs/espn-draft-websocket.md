@@ -44,7 +44,7 @@ Server sends:
 
 | frame | meaning |
 |---|---|
-| `INIT <base64>` | ~21KB of big-endian uint32 records; league/team ids visible. Structured binary, NOT a player list. Not needed — see below. |
+| `INIT <base64>` | ~21KB of big-endian uint32 records. **Carries the draft state so far** — see below. Sent on connect, including on a mid-draft reconnect. |
 | `TOKEN 1:{league}:{team}:{SWID}:{MEMBER_NO}` | echoes the composite token |
 | `JOINED {teamId} {SWID}` | join ack |
 | `AUTODRAFT {teamId} true` | autodraft state |
@@ -95,6 +95,7 @@ surface.
 
 1. **Keepers.** The captures are from keeper-free mocks. Unknown whether keeper
    slots emit `SELECTED` or are simply absent. Changes the pointer arithmetic.
+1a. **INIT catch-up is possible but only partly decoded.** See the INIT section.
 1b. **UNDO breaks naive pointer-walking.** An LM undo vacates a slot and the
    next `SELECTED` refills it. Our pointer must roll back on `UNDONE`, and
    `DraftState` needs a way to represent a vacated slot — it currently has no
@@ -121,3 +122,38 @@ as-is, so a `manual` correction still beats an `espn_sync` vacate.
 
 Remember the zero-based offset: `UNDONE 125` vacates **overall pick 126**.
 Getting that wrong silently shifts every subsequent pick by one.
+
+## INIT payload (partially decoded)
+
+Base64 → ~21KB of **big-endian uint32** words. Captured from a browser refresh
+during an in-progress draft, so it reflects state at connect time — which makes
+it the natural catch-up mechanism after a dropped socket.
+
+Confirmed: it contains real drafted players. A scan for words matching known
+ESPN player ids found 62 records / 56 distinct players, every one carrying the
+correct league id. Records appear as consecutive words:
+
+    w[n-3] = league id      (2028724233, constant)
+    w[n-2] = team id        (all 12 valid team ids appear)
+    w[n-1] = ??             (see below)
+    w[n]   = player id
+    w[n+1] = lineup slot id (matches the SELECTED slot field)
+
+Most records sit at a stride of 45 words, with other strides interleaved.
+
+**Not decoded:** `w[n-1]`. Values run 2, 6, 10, 14 … (stride 4) in the main
+run, which is not a clean overall-pick number, and 56 distinct players across
+62 records means some appear twice. Either there are two record kinds, or the
+field is an offset/bitfield rather than a pick index.
+
+**Deliberately stopping here.** Finishing this is a binary reverse-engineering
+exercise, and we do not need it: if the socket drops, the human is watching the
+ESPN UI and can manually enter anything missed, and the picks-entered-vs-elapsed
+counter makes the gap visible. Revisit only if unattended catch-up ever becomes
+worth the hours.
+
+## MEMBER_NO stability — now confirmed three times
+
+Same trailing `378465633` for the same SWID across three different leagues on
+different days (1113964546, 1714522183, 2028724233). Treating it as a stable
+member id is safe; the WS URL is constructible from `.env`.

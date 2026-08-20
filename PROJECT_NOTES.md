@@ -1,6 +1,7 @@
 # Project Notes — Draft Copilot
 
-**Snapshot: 2026-08-19. Draft: Friday 2026-08-28, 10:00 AM EDT — 9 days out.**
+**Snapshot: 2026-08-19 (updated after unattended session). Draft: Friday
+2026-08-28, 10:00 AM EDT — 9 days out.**
 
 Running status of the build against the plan in `CLAUDE.md` and `README.md`.
 Those two files are the *spec*; this file is the *state*. When they disagree,
@@ -13,31 +14,34 @@ this file is newer — fold the correction back into them.
 | # | Item | State |
 |---|---|---|
 | 1 | Pick-schedule generator (snake-with-holes) | **Done.** Tested, running on real league data, cross-checked against ESPN. |
-| 2 | Player ID crosswalk | **Not started — now the critical path.** All input data is on disk. |
-| 3 | Custom-scoring valuation | **Config done, no code.** All scoring values are real; the stat-line → points engine is unwritten. |
-| 4 | DraftState + manual entry + UI | Not started. |
+| 2 | Player ID crosswalk | **Built, awaiting hand review.** 1979 auto-matched, 83 in `data/crosswalk_review.csv`. NOT frozen. |
+| 3 | Custom-scoring valuation | **Scoring engine done** (`engine/scoring.py`), tests hand-computed. Projection loader (4for4 columns → canonical stats) not written. Kicker scoring blocked — see session log. |
+| 4 | DraftState + manual entry + UI | **Core done** (`engine/draft_state.py`): event log, replay, reconciliation. Manual entry and UI not started, deliberately. |
 | 5 | VONA/survival + feasibility guard | Not started. Input source decided (league history, not ADP). |
-| 6 | ESPN live-sync experiment | **Half answered.** Auth + shape verified; live-update behaviour still unknown. |
+| 6 | ESPN live-sync experiment | **Half answered.** Auth + shape verified; live-update behaviour still unknown and time-gated. |
 | 7 | League-history opponent priors | Not started. Data on disk and richer than expected. |
 | 8 | LLM explanation layer | Not started. Still first to cut. |
 
-**11 commits, clean tree, 24 tests passing, ruff clean.**
+**18 commits, clean tree, 173 tests passing, ruff clean.**
 
 ---
 
 ## What exists
 
 ```
-engine/schedule.py        225 loc   pure snake-with-holes: keepers, collision cascade, traded picks
-sources/league_config.py  250 loc   TOML -> engine inputs, all validation + loud errors
-tests/test_schedule.py    231 loc   24 tests, hand-computed 4x3 examples + full 12x22
-tools/poll_draft.py       180 loc   throwaway ESPN mDraftDetail poller (experiment #1)
-tools/clean_fantasypros.py 134 loc  one-off: FantasyPros web-paste -> clean CSV
+engine/schedule.py          pure snake-with-holes: keepers, collision cascade, traded picks
+engine/positions.py         NFL position -> roster slot, shared by 3+ callers
+engine/scoring.py           stat line x [scoring] -> points; half-sack + 0.2/reception
+engine/draft_state.py       append-only pick log, replay, manual>keeper>espn_sync
+sources/league_config.py    TOML -> engine inputs, all validation + loud errors
+sources/build_crosswalk.py  ESPN-id-keyed crosswalk + review queue
+tools/poll_draft.py         throwaway ESPN mDraftDetail poller (experiment #1)
+tools/clean_fantasypros.py  one-off: FantasyPros web-paste -> clean CSV
 ```
 
 `engine/` has zero I/O and full test coverage (invariant #1). `sources/` holds
-all parsing and validation (invariant #2). **`sources/league_config.py` has no
-tests** — the one real coverage gap.
+all parsing and validation (invariant #2). The former loader coverage gap is
+closed — `tests/test_league_config.py` now has 30 tests.
 
 ### Verified end-to-end on real league data
 
@@ -59,6 +63,9 @@ All under `data/` — **note `data/` is gitignored**, so none of it is committed
 | `fantasypros/idp.csv` | raw web-page paste (do not parse directly) |
 | `fantasypros/idp_clean.csv` | 204 IDP, cleaned: rank, player, team, pos, pos_rank, slot, bye, tier |
 | `historical/draft-{2023,2024,2025}.csv` | 264 picks each, with `Position`, `Round`, populated `Keeper` (36/yr) |
+| `crosswalk.csv` | 1979 auto-matched source→ESPN-id rows. **Committed** (the one exception to the `data/*` ignore) |
+| `crosswalk_review.csv` | 83 rows needing hand review. Not committed |
+| `espn/players.json`, `espn/proteams.json` | cached ESPN spine (2472 players) + team-id map |
 
 Ignore every `FF Pts` column — that is the provider's scoring, not ours
 (CLAUDE.md: always recompute from stat lines).
@@ -77,7 +84,21 @@ Ignore every `FF Pts` column — that is the provider's scoring, not ours
 - **Keeper inference is unnecessary.** CLAUDE.md speculated we might infer
   keepers by diffing prior rosters; the historical CSVs carry a populated
   `Keeper` column.
-- **Reception scoring is 0.2, not half-PPR.** Docs corrected.
+- **Reception scoring is 0.2, not half-PPR.** Docs corrected, and now enforced
+  by test (`tests/test_scoring.py` asserts 100 catches = 20 points and
+  explicitly that it is not the half-PPR or full-PPR total).
+- **ESPN position ids** decoded empirically from real data: `1=QB 2=RB 3=WR
+  4=TE 5=K 9=DT 10=DE 11=LB 12=CB 13=S`. Player records carry only a numeric
+  `proTeamId`; the id→abbreviation map comes from `?view=proTeamSchedules_wl`
+  (33 entries including FA) rather than being hardcoded.
+- **Our scoring genuinely reorders the providers' boards.** 4for4's LB2 is
+  Jordyn Brooks; under our rules it is Cedric Gray (190.4 to Brooks' 188.0).
+  That is the whole premise of recomputing from stat lines, now demonstrated
+  rather than assumed.
+- **Name collisions are real and dangerous.** The ESPN universe contains two
+  Lamar Jacksons (QB and CB) and two Justin Jeffersons (WR and LB), and
+  4for4 lists Travis Hunter as CB where ESPN has him at WR. All three are in
+  the review queue rather than silently matched.
 - **No IDP ADP exists anywhere**, and it is structural, not a timing artifact:
   offense ADP is already populated today, while 4for4's IDP tables have no ADP
   column at all. National ADP comes from redraft leagues that mostly don't
@@ -99,20 +120,26 @@ Ignore every `FF Pts` column — that is the provider's scoring, not ours
    rounds that disagree with `league-config.toml`. Config is authoritative
    until declarations close; re-verify after.
 4. **Cookies expire.** They are live now. Refresh the morning of the draft.
-5. **`data/` is gitignored, including the crosswalk.** Invariant #3 calls for a
-   hand-reviewed, frozen crosswalk — but as configured it will never be
-   committed, so a lost working directory loses the hand review. Decide whether
-   to except `data/crosswalk.csv` from the ignore. (`.gitignore` also has a
-   duplicate `data/` entry and a stale comment claiming the rest of `data/` is
-   tracked.)
-6. **Crosswalk name matching will be the slow part.** 29 of 204 FantasyPros IDP
-   names carry punctuation that breaks naive matching — `Tre'von Moehrig`,
-   `Henry To'oTo'o`, `Kool-Aid McKinstry`, `Akeem Davis-Gaither`, plus many
-   Jr./Sr./II/III. Historical CSVs also join name+team with a **non-breaking
-   space** (`\xa0`) and carry the clean name in an *unnamed* column.
-7. **`half_sack` is a half-sack unit.** ESPN's `HALFSK` = 1.4, so a full sack
-   is 2.8. Projections report whole sacks. Getting this wrong undervalues a
-   12-sack DL by ~17 points and reorders the whole DL board.
+5. **Kicker scoring is unresolved — blocks K valuation.** `[scoring.kicker]
+   fgy = 0.1` is commented "per FG made" but `FGY` is ESPN's field-goal-*yardage*
+   stat. Per FG made, a 38-FG kicker scores 3.8 points from field goals; per
+   yard, ~150. Only the latter is plausible — but 4for4 supplies FG *counts*
+   with no yardage, and the `fg_0_39 / fg_40_49 / fg_50_plus` buckets are all
+   `0.0`, so they cannot substitute. Not guessed: `FG` currently scores zero and
+   kickers score from PATs only. **Needs your call.** One line in the
+   `engine/scoring.py` rule table either way.
+6. **The crosswalk is not frozen.** 83 rows in `data/crosswalk_review.csv` need
+   hand review before invariant #3 is satisfied. Until then any consumer must
+   treat an unmatched player as a hard error, not a silent drop.
+7. **`half_sack` is a half-sack unit.** Handled in `engine/scoring.py` and
+   asserted by test, but it stays on this list because any *new* code path that
+   reads sacks must apply the ×2 conversion. Myles Garrett's 14.6 sacks are
+   40.9 points converted, 20.4 unconverted.
+8. **ESPN's player endpoint has sharp edges.** `kona_player_info` returns HTTP
+   400 without a sort key (`sortPercOwned`) regardless of limit, and the full
+   universe is 2472 players — a limit of 2000 silently truncates and tripled the
+   unmatched count. Both handled in `sources/build_crosswalk.py`; noted here
+   because any future ESPN caller will hit them.
 
 ---
 
@@ -120,16 +147,17 @@ Ignore every `FF Pts` column — that is the provider's scoring, not ours
 
 1. **Run `tools/poll_draft.py` against a live mock draft.** Time-gated — it
    cannot be done after the 28th. Answers risk #1.
-2. **Build the crosswalk** (priority #2). ESPN ids ↔ 4for4 names ↔ FantasyPros
-   names ↔ historical names. Generate candidates, flag ambiguities, hand-review,
-   freeze.
-3. **Scoring engine** (priority #3): stat lines × `[scoring]` → points. Write
-   the test first with a hand-computed example. IDP correctness over offense
-   polish.
-4. **Positional-timing priors from `data/historical/`** — smooth across all
+2. **Hand-review `data/crosswalk_review.csv`** (83 rows), fill
+   `resolved_espn_id`, then freeze the crosswalk. Blocks anything that joins
+   projections to draft-day picks.
+3. **Projection loader**: 4for4 columns → canonical stat names → the scoring
+   engine, producing a valued player pool. The engine is done and tested; this
+   is the I/O half. Resolve kicker scoring (risk #5) first or accept K = PAT
+   points only.
+4. **VOR baselines** off the valued pool (priority #5's prerequisite).
+5. **Positional-timing priors from `data/historical/`** — smooth across all
    three years; per-year IDP counts swing enough (DE 20/26/20, DT 5/3/6) that
    any single season is noise.
-5. Loader tests for `sources/league_config.py`.
 
 ---
 

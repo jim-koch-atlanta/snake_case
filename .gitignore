@@ -12,5 +12,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Do not upload other site's data
+data/
+
 # Throwaway ESPN poller dumps (--dump). Rest of data/ IS tracked (crosswalk etc.)
+data/
 data/draft_snapshots/

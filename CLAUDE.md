@@ -38,12 +38,17 @@ Fantasy football draft-day decision support tool for a 12-team ESPN league.
 
 ## Data sources
 
-- **4for4 (subscriber)**: manual CSV export the night before + morning of. Loader must tolerate their column naming. No scraping.
+- **4for4 (subscriber)**: manual CSV export, retrieved by hand (no API, no scraping). Source: `https://www.4for4.com/fantasy-football-projections/qb/2026` (swap the position in the path for the other tables). Local, retrieved 2026-08-19:
+  - `data/4for4/4for4_projections.csv` — offense + K (QB/RB/WR/TE/K, ~507 players), stat-level, **and carries an `ADP` column** (~274 populated).
+  - `data/4for4/4for4-fantasy-football-projections-{db,dl,lb}-2026-table.csv` — IDP, ~920 players, stat-level: `Tackles` (solo) and `Assists` as **separate** columns, plus Sacks, TFL, QBH, INT, PD, FFum, FR, Safety, DefTD.
+  - Every file also has an `FF Pts` column — **ignore it**, it is 4for4's scoring, not ours.
+- **FantasyPros IDP consensus**: `https://www.fantasypros.com/nfl/rankings/idp-cheatsheets.php` → `data/fantasypros/idp.csv`. Intended as an IDP blend/sanity check; 4for4 already covers IDP stat-level, so this is a nice-to-have, not a dependency.
+- **League history**: our league's own archives → `data/historical/draft-{2023,2024,2025}.csv`. 264 picks each, with `Position`, `Round`, and a populated `Keeper` column (36/year). Columns: `NO., PLAYER (name+team, NBSP-separated), <unnamed> (clean name), Position, Round, Keeper`. Positions are real NFL positions (DE/DT/CB/S/LB), not our roster slots — needs mapping to DL/LB/DB.
 - **ESPN v3 API**: `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{year}/segments/0/leagues/{league_id}` with views `mDraftDetail`, `mSettings`, `mTeam`, `kona_player_info`. Auth = `SWID` + `espn_s2` cookies from env (`.env`, git-ignored). Cookies expire — refresh morning of draft.
-  - **UNVERIFIED**: whether `mDraftDetail` updates live during an active draft, and at what latency. This is experiment #1. If it doesn't, manual entry is the primary path and we cut sync entirely.
-- **League history**: same endpoint, prior seasons — per-manager draft priors (reach vs ADP, positional order) and the ADP→actual-pick regression. Check whether pick objects carry a keeper flag; if not, infer keepers by diffing against prior end-of-season rosters.
-- **Sleeper public API** (no auth): injury status / news backup.
-- **FantasyPros IDP consensus**: manual CSV for IDP blend.
+  - **VERIFIED 2026-08-19**: `mDraftDetail` returns all 264 slots pre-draft with `teamId` per slot; 254/264 match our generated schedule exactly. The 10 diffs are precisely our 10 traded picks, and ESPN shows the **original** owner in every case — *ESPN's grid does not reflect trades*. Picks carry `keeper` and `reservedForKeeper` flags; as of 2026-08-19 nine slots are `reservedForKeeper` (3 teams x 3) with `playerId: -1` and rounds that disagree with our config. Treat `docs/league-config.toml` as authoritative for keepers.
+  - **VERIFIED 2026-08-19**: `kona_player_info` returns stat-level projections (`statSourceId=1`) as ~44 numeric ESPN stat ids, plus prior-season actuals. Usable as a cross-check or fallback for 4for4.
+  - **STILL UNVERIFIED**: whether `mDraftDetail` updates *live* during an active draft, and at what latency. This is experiment #1 — run `tools/poll_draft.py` against a mock draft. If it doesn't update live, manual entry is the primary path and we cut sync entirely.
+- **Sleeper public API** (no auth): injury status / news backup; its player DB is also a useful crosswalk aid.
 
 ## Commands
 

@@ -8,6 +8,7 @@ league_id = 12345          # TODO: replace
 season = 2026
 teams = 12                 # consistency check; must equal len(draft_order)
 draft_type = "snake"
+draft_rounds = 22
 pick_clock_seconds = 90    # TODO: verify in ESPN league settings
 my_team = "Team Name 6"    # TODO: must match a `name` in draft_order below
 draft_datetime = "2026-08-28T10:00:00-04:00"
@@ -35,18 +36,18 @@ ir = 3      # not drafted; loader excludes it from round count
 
 [draft]
 order = [
-  { slot =  1, name = "Team Name 1",  espn_team_id =  1 },
-  { slot =  2, name = "Team Name 2",  espn_team_id =  2 },
-  { slot =  3, name = "Team Name 3",  espn_team_id =  3 },
-  { slot =  4, name = "Team Name 4",  espn_team_id =  4 },
-  { slot =  5, name = "Team Name 5",  espn_team_id =  5 },
-  { slot =  6, name = "Team Name 6",  espn_team_id =  6 },
-  { slot =  7, name = "Team Name 7",  espn_team_id =  7 },
-  { slot =  8, name = "Team Name 8",  espn_team_id =  8 },
-  { slot =  9, name = "Team Name 9",  espn_team_id =  9 },
-  { slot = 10, name = "Team Name 10", espn_team_id = 10 },
-  { slot = 11, name = "Team Name 11", espn_team_id = 11 },
-  { slot = 12, name = "Team Name 12", espn_team_id = 12 },
+  { slot =  1, name = "Team Name 1",  team_id =  1 },
+  { slot =  2, name = "Team Name 2",  team_id =  2 },
+  { slot =  3, name = "Team Name 3",  team_id =  3 },
+  { slot =  4, name = "Team Name 4",  team_id =  4 },
+  { slot =  5, name = "Team Name 5",  team_id =  5 },
+  { slot =  6, name = "Team Name 6",  team_id =  6 },
+  { slot =  7, name = "Team Name 7",  team_id =  7 },
+  { slot =  8, name = "Team Name 8",  team_id =  8 },
+  { slot =  9, name = "Team Name 9",  team_id =  9 },
+  { slot = 10, name = "Team Name 10", team_id = 10 },
+  { slot = 11, name = "Team Name 11", team_id = 11 },
+  { slot = 12, name = "Team Name 12", team_id = 12 },
 ]
 
 # Keepers --------------------------------------------------------------------
@@ -63,10 +64,53 @@ order = [
 
 # (still inside [draft])
 keepers = [
-  { team = "Team Name 1", player = "Example Player A", round =  2 },
-  { team = "Team Name 1", player = "Example Player B", round =  7 },
-  { team = "Team Name 1", player = "Example Player C", round =  7 },  # collides -> resolves to round 6
-  # ... 33 more rows (3 per team, all 12 teams)
+  { team = "Team Name 1", player = "Aaron Vasquez", round =  2 },
+  { team = "Team Name 1", player = "Ben Okafor", round =  8 },
+  { team = "Team Name 1", player = "Carter Lindqvist", round = 14 },
+
+  { team = "Team Name 2", player = "Danny Moreau", round =  1 },
+  { team = "Team Name 2", player = "Eli Nakamura", round =  5 },
+  { team = "Team Name 2", player = "Frank Delgado", round = 11 },
+
+  { team = "Team Name 3", player = "Grant Whitfield", round =  7 },
+  { team = "Team Name 3", player = "Henry Osei", round =  7 },
+  { team = "Team Name 3", player = "Ivan Petrov", round = 16 },
+
+  { team = "Team Name 4", player = "Jack Sorensen", round =  3 },
+  { team = "Team Name 4", player = "Kyle Ferreira", round =  9 },
+  { team = "Team Name 4", player = "Liam Brennan", round = 20 },
+
+  { team = "Team Name 5", player = "Mateo Rossi", round =  4 },
+  { team = "Team Name 5", player = "Nolan Fitzgerald", round = 12 },
+  { team = "Team Name 5", player = "Owen Tuiasosopo", round = 18 },
+
+  { team = "Team Name 6", player = "Patrick Kowalski", round =  2 },
+  { team = "Team Name 6", player = "Quentin Boateng", round = 10 },
+  { team = "Team Name 6", player = "Ryan Mercado", round = 15 },
+
+  { team = "Team Name 7", player = "Sam Aldridge", round =  6 },
+  { team = "Team Name 7", player = "Trevor Nakoa", round = 13 },
+  { team = "Team Name 7", player = "Umar Farooq", round = 21 },
+
+  { team = "Team Name 8", player = "Victor Almeida", round =  1 },
+  { team = "Team Name 8", player = "Wesley Chang", round =  8 },
+  { team = "Team Name 8", player = "Xavier Dubois", round = 17 },
+
+  { team = "Team Name 9", player = "Yusuf Rahman", round =  5 },
+  { team = "Team Name 9", player = "Zach Molnar", round = 11 },
+  { team = "Team Name 9", player = "Andre Silva", round = 22 },
+
+  { team = "Team Name 10", player = "Cole Ashworth", round =  3 },
+  { team = "Team Name 10", player = "Derek Nguyen", round = 14 },
+  { team = "Team Name 10", player = "Ethan Barlow", round = 19 },
+
+  { team = "Team Name 11", player = "Felix Ramos", round =  9 },
+  { team = "Team Name 11", player = "Gabriel Santos", round = 16 },
+  { team = "Team Name 11", player = "Hunter Vogel", round = 20 },
+
+  { team = "Team Name 12", player = "Isaac Mensah", round =  4 },
+  { team = "Team Name 12", player = "Jonah Kirkland", round = 12 },
+  { team = "Team Name 12", player = "De'Andre Whitaker-Cruz", round = 18 },
 ]
 
 # Traded picks ---------------------------------------------------------------
@@ -84,10 +128,10 @@ keepers = [
 # NOTE: keys are `from_team`/`to_team`, NOT `from`/`to` — `from` is a reserved
 # word in Python and cannot be used as a keyword argument.
 #
-# Leave as an empty list if there are no trades:  trades = []
+# Leave as an empty list if there are no trades:  traded_picks = []
 
 # (still inside [draft])
-trades = [
+traded_picks = [
   { from_team = "Team Name 1", to_team = "Team Name 6", round = 19 },
   { from_team = "Team Name 6", to_team = "Team Name 1", round = 22 },
 ]

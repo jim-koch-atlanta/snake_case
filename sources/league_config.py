@@ -1,4 +1,4 @@
-"""Parse docs/league-config.md (the canonical league facts) into engine inputs.
+"""Parse docs/league-config.toml (the canonical league facts) into engine inputs.
 
 This is the I/O + validation layer (architecture invariant #2): engine/ stays
 pure, and every loud-error-on-bad-config rule (invariant #3) lives here. The
@@ -10,8 +10,8 @@ hard error, not a silent pure-snake fallback.
 
 from __future__ import annotations
 
-import re
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,7 +23,7 @@ from engine.schedule import (
     team_live_picks,
 )
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "docs" / "league-config.md"
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "docs" / "league-config.toml"
 IR_SLOT = "IR"
 
 
@@ -53,103 +53,84 @@ class LeagueConfig:
         return [t.team_id for t in self.teams]
 
 
-def _section(text: str, header_prefix: str) -> list[str]:
-    """Lines of the first '## <header_prefix>...' section, until the next '## '."""
-    out: list[str] = []
-    capturing = False
-    for line in text.splitlines():
-        if line.startswith("## "):
-            if capturing:
-                break
-            capturing = line[3:].strip().lower().startswith(header_prefix.lower())
-            continue
-        if capturing:
-            out.append(line)
-    return out
+def _get(data: object, *path: str) -> object:
+    """Fetch a nested config key, naming the full dotted path if it is missing.
 
-
-def _find_int(text: str, pattern: str, label: str) -> int:
-    m = re.search(pattern, text)
-    if not m:
-        raise ConfigError(f"could not find {label} in league config")
-    return int(m.group(1))
-
-
-def _parse_draft_order(text: str) -> list[Team]:
-    teams: list[Team] = []
-    for line in _section(text, "draft order"):
-        s = line.replace("`", "").strip()
-        m = re.match(r"^(\d+)\.\s*(.+?)\s*\(ESPN team_id:\s*(\d+)\)\s*$", s)
-        if m:
-            teams.append(
-                Team(slot=int(m.group(1)), name=m.group(2).strip(), team_id=int(m.group(3)))
+    Hand-edited config: a bare KeyError('team') gives no clue which section is
+    wrong, so every required lookup goes through here (invariant #3 — fail
+    loudly and legibly).
+    """
+    cur = data
+    walked: list[str] = []
+    for key in path:
+        where = ".".join(walked) or "<top level>"
+        if not isinstance(cur, dict):
+            raise ConfigError(
+                f"expected a table at '{where}' containing '{key}', "
+                f"found {type(cur).__name__}"
             )
-    if not teams:
-        raise ConfigError("no draft-order rows parsed from '## Draft order'")
-    ids = [t.team_id for t in teams]
-    if len(set(ids)) != len(ids):
-        raise ConfigError(f"duplicate team_ids in draft order: {ids}")
-    return teams
+        if key not in cur:
+            present = ", ".join(sorted(cur)) or "(nothing)"
+            raise ConfigError(
+                f"missing required key '{'.'.join([*walked, key])}' "
+                f"— keys present under '{where}': {present}"
+            )
+        cur = cur[key]
+        walked.append(key)
+    return cur
 
 
-def _parse_my_team(text: str, teams: list[Team]) -> int:
-    m = re.search(r"My team:\s*(.+?)\s*\(position", text.replace("`", ""))
-    if not m:
-        raise ConfigError("could not find 'My team:' line")
-    name = m.group(1).strip()
-    for t in teams:
-        if t.name.lower() == name.lower():
-            return t.team_id
-    raise ConfigError(f"my team '{name}' not found in draft order")
+def _row_get(row: object, key: str, where: str) -> object:
+    """Fetch a key from one row of an array-of-tables, e.g. draft.keepers[3].
+
+    `where` is the row's location, so a typo in row 17 of 36 says row 17.
+    """
+    if not isinstance(row, dict):
+        raise ConfigError(
+            f"{where}: expected a table like {{ {key} = ... }}, "
+            f"found {type(row).__name__}"
+        )
+    if key not in row:
+        present = ", ".join(sorted(row)) or "(nothing)"
+        raise ConfigError(f"{where}: missing '{key}' — keys present: {present}")
+    return row[key]
 
 
-def _parse_num_rounds(text: str) -> int:
-    total = 0
-    found = False
-    for line in _section(text, "roster"):
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) == 2 and cells[1].isdigit():
-            slot, count = cells[0], int(cells[1])
-            if slot.upper() != IR_SLOT:  # IR is not drafted
-                total += count
-                found = True
-    if not found:
-        raise ConfigError("no roster rows parsed from '## Roster'")
-    return total
-
-
-def _parse_keepers(text: str, teams: list[Team]) -> list[Keeper]:
+def resolve_team_name_to_id(team_name: str, teams: list[Team], where: str = "") -> int:
     name_to_id = {t.name.lower(): t.team_id for t in teams}
     ids = {t.team_id for t in teams}
-    keepers: list[Keeper] = []
-    placeholders = 0
 
-    for line in _section(text, "keepers"):
-        if "|" not in line:
-            continue
-        cells = [c.strip().strip("`").strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) != 3:
-            continue
-        team_s, player_s, round_s = cells
-        if team_s.lower() == "team":  # header row
-            continue
-        if set(team_s) <= set("-: "):  # separator row
-            continue
-        if any("TODO" in c.upper() for c in cells) or not round_s.isdigit():
-            placeholders += 1
-            continue
-        tid = name_to_id.get(team_s.lower())
-        if tid is None and team_s.isdigit() and int(team_s) in ids:
-            tid = int(team_s)
-        if tid is None:
-            raise ConfigError(f"keeper row references unknown team '{team_s}'")
-        keepers.append(Keeper(team_id=tid, player=player_s, declared_round=int(round_s)))
+    tid = name_to_id.get(str(team_name).lower())
+    if tid is None and str(team_name).isdigit() and int(team_name) in ids:
+        tid = int(team_name)
+    if tid is None:
+        known = ", ".join(t.name for t in teams)
+        prefix = f"{where}: " if where else ""
+        raise ConfigError(
+            f"{prefix}unknown team '{team_name}' — must be one of: {known}"
+        )
+    return tid
+
+
+def _parse_keepers(data: dict, teams: list[Team]) -> list[Keeper]:
+    keepers: list[Keeper] = []
+
+    for i, row in enumerate(_get(data, "draft", "keepers")):
+        where = f"draft.keepers[{i}]"
+        keepers.append(
+            Keeper(
+                team_id=resolve_team_name_to_id(
+                    _row_get(row, "team", where), teams, where
+                ),
+                player=_row_get(row, "player", where),
+                declared_round=int(_row_get(row, "round", where)),
+            )
+        )
 
     if not keepers:
         raise ConfigError(
-            f"'## Keepers' table is not filled in ({placeholders} placeholder/TODO "
-            "row(s), 0 real keepers). Expected 36 rows (3 per team). Fill it in "
-            "docs/league-config.md — the pick schedule is undefined without it."
+            "draft.keepers is empty. Expected 36 rows (3 per team) — the pick "
+            "schedule is undefined without it."
         )
 
     expected = 3 * len(teams)
@@ -157,46 +138,30 @@ def _parse_keepers(text: str, teams: list[Team]) -> list[Keeper]:
         counts: dict[int, int] = {}
         for k in keepers:
             counts[k.team_id] = counts.get(k.team_id, 0) + 1
-        off = {tid: c for tid, c in counts.items() if c != 3}
+        names = {t.team_id: t.name for t in teams}
+        off = {names.get(tid, tid): c for tid, c in counts.items() if c != 3}
+        missing = [t.name for t in teams if t.team_id not in counts]
         raise ConfigError(
-            f"expected {expected} keepers (3 per team), parsed {len(keepers)}. "
-            f"Teams not at exactly 3: {off or 'n/a (some team missing entirely)'}"
+            f"draft.keepers: expected {expected} keepers (3 per team), got "
+            f"{len(keepers)}. Teams not at exactly 3: {off or 'none'}"
+            + (f". Teams with no keepers at all: {missing}" if missing else "")
         )
     return keepers
 
 
-def _parse_trades(text: str, teams: list[Team]) -> list[TradedPick]:
-    """Parse '## Traded picks'. Absent section or empty table = no trades (legal)."""
-    name_to_id = {t.name.lower(): t.team_id for t in teams}
-    ids = {t.team_id for t in teams}
-
-    def resolve(cell: str, row: str) -> int:
-        tid = name_to_id.get(cell.lower())
-        if tid is None and cell.isdigit() and int(cell) in ids:
-            tid = int(cell)
-        if tid is None:
-            raise ConfigError(f"traded-pick row references unknown team '{cell}': {row}")
-        return tid
-
+def _parse_trades(data: dict, teams: list[Team]) -> list[TradedPick]:
     trades: list[TradedPick] = []
-    for line in _section(text, "traded picks"):
-        if "|" not in line:
-            continue
-        cells = [c.strip().strip("`").strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) != 3:
-            continue
-        from_s, to_s, round_s = cells
-        if from_s.lower() == "from":  # header row
-            continue
-        if set(from_s) <= set("-: "):  # separator row
-            continue
-        if any("TODO" in c.upper() for c in cells) or not round_s.isdigit():
-            continue  # unfilled example row — trades are optional, so not fatal
+    for i, row in enumerate(_get(data, "draft", "traded_picks")):
+        where = f"draft.traded_picks[{i}]"
         trades.append(
             TradedPick(
-                from_team_id=resolve(from_s, line),
-                to_team_id=resolve(to_s, line),
-                round=int(round_s),
+                from_team_id=resolve_team_name_to_id(
+                    _row_get(row, "from_team", where), teams, where
+                ),
+                to_team_id=resolve_team_name_to_id(
+                    _row_get(row, "to_team", where), teams, where
+                ),
+                round=int(_row_get(row, "round", where)),
             )
         )
     return trades
@@ -205,17 +170,35 @@ def _parse_trades(text: str, teams: list[Team]) -> list[TradedPick]:
 def load_league_config(path: Path = CONFIG_PATH) -> LeagueConfig:
     if not path.exists():
         raise FileNotFoundError(f"league config not found: {path}")
-    text = path.read_text()
-    teams = _parse_draft_order(text)
-    return LeagueConfig(
-        league_id=_find_int(text, r"League ID:\s*`?(\d+)`?", "League ID"),
-        season=_find_int(text, r"Season:\s*`?(\d+)`?", "Season"),
-        teams=teams,
-        num_rounds=_parse_num_rounds(text),
-        keepers=_parse_keepers(text, teams),
-        trades=_parse_trades(text, teams),
-        my_team_id=_parse_my_team(text, teams),
-    )
+    with path.open(mode="rb") as f:
+        try:
+            data = tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
+            raise ConfigError(f"{path.name}: invalid TOML — {e}") from e
+
+    try:
+        teams = [
+            Team(
+                slot=_row_get(row, "slot", f"draft.order[{i}]"),
+                name=_row_get(row, "name", f"draft.order[{i}]"),
+                team_id=_row_get(row, "team_id", f"draft.order[{i}]"),
+            )
+            for i, row in enumerate(_get(data, "draft", "order"))
+        ]
+        return LeagueConfig(
+            league_id=_get(data, "basics", "league_id"),
+            season=_get(data, "basics", "season"),
+            teams=teams,
+            num_rounds=_get(data, "basics", "draft_rounds"),
+            keepers=_parse_keepers(data, teams),
+            trades=_parse_trades(data, teams),
+            my_team_id=resolve_team_name_to_id(
+                _get(data, "basics", "my_team"), teams, "basics.my_team"
+            ),
+        )
+    except ConfigError as e:
+        # one place adds the file context, so messages stay short at the raise site
+        raise ConfigError(f"{path.name}: {e}") from None
 
 
 def main() -> int:

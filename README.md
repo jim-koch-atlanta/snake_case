@@ -56,4 +56,13 @@ docs/       league-config.toml (canonical league facts), decisions log
 
 ## Status
 
-See CLAUDE.md → Priority order. Currently at: **1**.
+See CLAUDE.md → Priority order, and PROJECT_NOTES.md for the running state.
+
+- **1 Pick-schedule generator** — done, verified against real league data.
+- **2 Player crosswalk** — built and keyed on ESPN player ids; **awaiting hand
+  review** of `data/crosswalk_review.csv` before it can be frozen.
+- **3 Custom-scoring valuation** — scoring engine done; the projection loader
+  that feeds it stat lines is next.
+- **4 DraftState** — append-only event log and reconciliation done; manual
+  entry and the UI are not started.
+- **5–8** — not started. #8 (LLM explanations) is still first to cut.

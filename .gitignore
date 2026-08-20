@@ -12,9 +12,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Do not upload other site's data
-data/
-
-# Throwaway ESPN poller dumps (--dump). Rest of data/ IS tracked (crosswalk etc.)
-data/
-data/draft_snapshots/
+# Third-party projection data is not ours to redistribute, and the ESPN
+# snapshots/poller dumps are throwaway. Note this must be `data/*`, not
+# `data/`: git cannot re-include a file whose parent directory is excluded,
+# so excluding the contents is what makes the exception below work.
+data/*
+# ...except the crosswalk, which is hand-review effort over public player
+# names, not league-private data. Losing it means redoing the review.
+!data/crosswalk.csv

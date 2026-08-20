@@ -57,10 +57,9 @@ RULES: tuple[ScoringRule, ...] = (
     ScoringRule("receiving_2pt", ("receiving", "2pre")),
     # --- kicking ---
     ScoringRule("pat_made", ("kicker", "pat")),
-    # `fgy` is ESPN's field-goal-YARDAGE stat. See session log: the config
-    # comment reads "per FG made", which disagrees with the key name, and 4for4
-    # supplies FG counts but no yardage. Unresolved pending review; whichever
-    # way it lands, only this one line changes.
+    # `fgy` is ESPN's "FG Made Yards" (FGY) — points per FG YARD, not per FG
+    # made (confirmed 2026-08-20). 4for4 supplies FG counts with no yardage, so
+    # kicker stat lines must come from ESPN `kona_player_info` stat id 214.
     ScoringRule("field_goal_yards", ("kicker", "fgy")),
     ScoringRule("fg_made_0_39", ("kicker", "fg_0_39")),
     ScoringRule("fg_made_40_49", ("kicker", "fg_40_49")),

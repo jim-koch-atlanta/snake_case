@@ -198,3 +198,44 @@ K is 1 of 13 starting slots, so this does not block anything else.
 **What I need from you:** confirm whether `fgy` is per-yard or per-FG-made, and
 if per-yard, where FG distance data should come from (ESPN
 `kona_player_info` may carry it).
+
+---
+
+## 2026-08-20 — Kicker scoring resolved
+
+`fgy` confirmed as ESPN's **"FG Made Yards" (FGY)** — points per field-goal
+*yard*, not per FG made. The `field_goal_yards -> kicker.fgy` rule was already
+correct; the open question was only where yardage data comes from, since 4for4
+supplies FG counts and no yardage.
+
+**Answer: ESPN `kona_player_info`.** Stat ids decoded and verified across 8
+kickers (the three range buckets sum exactly to FG made for every one, and
+implied average FG distance lands at 38.5-38.7 yards throughout):
+
+| stat id | meaning |
+|---|---|
+| **214** | **FG made yards** — this is FGY |
+| 215 / 216 | FG missed yards / total FG yards attempted |
+| 83 / 84 / 85 | FG made / attempted / missed |
+| 86 / 87 / 88 | XP made / attempted / missed |
+| 74 / 77 / 80 | FG made 50+ / 40-49 / 0-39 |
+
+Worked example, Brandon Aubrey: 46.10 XP x 1.0 + 1371.5 FG yards x 0.1 =
+**183.3 points**. Read the wrong way (per FG made) he would score 46.1 + 3.5 =
+49.6 and kickers would rank on PATs alone.
+
+**Consequence for the projection loader: kickers must be sourced from ESPN, not
+4for4.** Every other position can come from 4for4; K is the exception.
+
+Added three named kicker tests (176 total now). Corrected the misleading
+`# Points for each FG made` comment in both `docs/league-config.toml` and the
+`.example` — comment only, no value changed.
+
+### Answers to the other open items
+
+- **keeper > espn_sync confirmed.** Keeper declarations go into ESPN in ~4-5
+  days (so ~2026-08-24/25). Precedence stays as implemented; once ESPN has them
+  the two should agree, which turns this into a useful cross-check rather than a
+  conflict. Worth adding a config-vs-ESPN keeper diff at that point.
+- **`POSITION_ALIASES` in `engine/positions.py` confirmed** as correct.
+- **`data/crosswalk_review.csv` is now committed** with its own `!` exception.

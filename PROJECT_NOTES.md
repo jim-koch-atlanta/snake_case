@@ -115,19 +115,18 @@ Ignore every `FF Pts` column — that is the provider's scoring, not ours
 2. **Are the 10 trades registered in ESPN at all?** ESPN shows original owners.
    If ESPN doesn't know about the trades, it will put the wrong manager on the
    clock on draft day. Confirm with the commissioner.
-3. **Keepers are not final.** Declarations are due ~2026-08-25. ESPN currently
-   flags 9 slots `reservedForKeeper` (3 teams x 3) with `playerId: -1` and
-   rounds that disagree with `league-config.toml`. Config is authoritative
-   until declarations close; re-verify after.
+3. **Keepers are not final.** Declarations go into ESPN ~2026-08-24/25. ESPN
+   currently flags 9 slots `reservedForKeeper` (3 teams x 3) with
+   `playerId: -1` and rounds that disagree with `league-config.toml`. Config
+   stays authoritative (DraftState enforces keeper > espn_sync). **Once ESPN is
+   populated, diff config vs ESPN keepers** — agreement validates both, and any
+   disagreement needs resolving before draft day.
 4. **Cookies expire.** They are live now. Refresh the morning of the draft.
-5. **Kicker scoring is unresolved — blocks K valuation.** `[scoring.kicker]
-   fgy = 0.1` is commented "per FG made" but `FGY` is ESPN's field-goal-*yardage*
-   stat. Per FG made, a 38-FG kicker scores 3.8 points from field goals; per
-   yard, ~150. Only the latter is plausible — but 4for4 supplies FG *counts*
-   with no yardage, and the `fg_0_39 / fg_40_49 / fg_50_plus` buckets are all
-   `0.0`, so they cannot substitute. Not guessed: `FG` currently scores zero and
-   kickers score from PATs only. **Needs your call.** One line in the
-   `engine/scoring.py` rule table either way.
+5. ~~Kicker scoring unresolved~~ **RESOLVED 2026-08-20.** `fgy` is ESPN's "FG
+   Made Yards" — points per FG *yard*. Yardage comes from `kona_player_info`
+   **stat id 214** (decode verified across 8 kickers). Standing consequence:
+   **kickers must be sourced from ESPN, not 4for4**, which has FG counts but no
+   yardage. Every other position can come from 4for4.
 6. **The crosswalk is not frozen.** 83 rows in `data/crosswalk_review.csv` need
    hand review before invariant #3 is satisfied. Until then any consumer must
    treat an unmatched player as a hard error, not a silent drop.

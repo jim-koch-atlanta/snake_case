@@ -165,6 +165,39 @@ def test_solo_and_assist_are_distinct_rules():
     assert solo != asst
 
 
+# --- named case 4: kicker, fgy is per FG YARD not per FG made ---------------
+
+def test_kicker_scores_field_goal_yardage_not_field_goal_count():
+    """`fgy` is ESPN's FGY = "FG Made Yards". Confirmed with the commissioner
+    2026-08-20; the config comment previously read "per FG made".
+
+        40 PAT      x 1.0 =  40.0
+      1200 FG yards x 0.1 = 120.0
+                            ------
+                             160.0
+
+    Read as per-FG-*made*, the same kicker's ~31 field goals would score 3.1
+    and the total would collapse to ~43 — kickers would rank on PATs alone.
+    """
+    stats = {"pat_made": 40, "field_goal_yards": 1200}
+    assert score_stat_line(stats, SCORING) == pytest.approx(160.0)
+
+
+def test_field_goal_count_is_not_a_scored_stat():
+    """4for4 supplies FG counts and no yardage, so its FG column must not be
+    silently treated as `field_goal_yards`."""
+    assert "fg_made" not in [r.stat for r in RULES]
+    assert score_stat_line({"fg_made": 31}, SCORING) == pytest.approx(0.0)
+    assert "fg_made" in unscored_stats({"fg_made": 31})
+
+
+def test_zero_valued_kicker_range_buckets_contribute_nothing():
+    """fg_0_39 / fg_40_49 / fg_50_plus are all 0.0 in this league: distance is
+    paid through yardage instead, so the buckets must not double-count."""
+    stats = {"fg_made_0_39": 19, "fg_made_40_49": 9, "fg_made_50_plus": 7}
+    assert score_stat_line(stats, SCORING) == pytest.approx(0.0)
+
+
 # --- offense -----------------------------------------------------------------
 
 def test_qb_stat_line():

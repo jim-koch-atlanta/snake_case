@@ -159,7 +159,9 @@ receiving.2pre = 2.0 # 2-pt receiving conversion
 
 [scoring.kicker]
 pat = 1.0 # Points for each PAT made
-fgy = 0.1 # Points for each FG made
+fgy = 0.1 # Points per FG MADE YARD (ESPN "FG Made Yards"/FGY), not per FG made.
+          # A 38-yard FG scores 3.8. Confirmed 2026-08-20. 4for4 supplies FG
+          # counts but no yardage -- use ESPN stat id 214 for this.
 fg_0_39 = 0.0 # Points for each FG 0-39 yards
 fg_40_49 = 0.0 # Points for each FG 40-49 yards
 fg_50_plus = 0.0 # Points for each FG 50+ yards

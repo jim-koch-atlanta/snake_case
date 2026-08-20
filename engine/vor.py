@@ -181,8 +181,13 @@ def starter_demand(roster_slots: Mapping[str, int], num_teams: int) -> dict[str,
     >>> starter_demand({"qb": 1, "rb": 1, "rb_wr": 1, "dl": 2, "be": 9}, 12)
     {'QB': 12, 'RB': 12, 'DL': 24}
     """
-    raise NotImplementedError("see tests/test_vor.py")
-
+    result = { }
+    for pos, count in roster_slots.items():
+        if pos in NON_STARTER_SLOTS:
+            continue
+        if pos in SLOT_ELIGIBILITY and len(SLOT_ELIGIBILITY[pos]) == 1:
+            result[SLOT_ELIGIBILITY[pos][0]] = count * num_teams
+    return result
 
 def pool_from_points(rows: Sequence[tuple[str, float]]) -> dict[str, list[float]]:
     """Group ``(position, points)`` pairs into the sorted pool this module wants.
@@ -194,4 +199,9 @@ def pool_from_points(rows: Sequence[tuple[str, float]]) -> dict[str, list[float]
     >>> pool_from_points([("WR", 10.0), ("RB", 5.0), ("WR", 30.0)])
     {'WR': [30.0, 10.0], 'RB': [5.0]}
     """
-    raise NotImplementedError("see tests/test_vor.py")
+    result: dict[str, list[float]] = {}
+    for position, points in rows:
+        result.setdefault(position, []).append(float(points))
+    for values in result.values():
+        values.sort(reverse=True)
+    return result

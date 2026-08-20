@@ -270,7 +270,7 @@ def test_unknown_my_team_names_the_field(example_text, tmp_path):
 # --- keeper count validation -----------------------------------------------
 
 def test_empty_keeper_list_is_a_hard_error(example_text, tmp_path):
-    text = re.sub(r"keepers = \[.*?\n\]", "keepers = []", example_text, flags=re.S)
+    text = re.sub(r"keepers = \[.*?\n\]", "keepers = []", example_text, flags=re.DOTALL)
     assert "keepers = []" in text
     with pytest.raises(ConfigError, match="draft.keepers is empty"):
         load_league_config(write_cfg(tmp_path, text))

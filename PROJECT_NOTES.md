@@ -18,7 +18,7 @@ this file is newer — fold the correction back into them.
 | 3 | Custom-scoring valuation | **Scoring engine done** (`engine/scoring.py`), tests hand-computed. Projection loader (4for4 columns → canonical stats) not written. Kicker scoring blocked — see session log. |
 | 4 | DraftState + manual entry + UI | **Core done** (`engine/draft_state.py`): event log, replay, reconciliation. Manual entry and UI not started, deliberately. |
 | 5 | VONA/survival + feasibility guard | Not started. Input source decided (league history, not ADP). |
-| 6 | ESPN live-sync experiment | **Half answered.** Auth + shape verified; live-update behaviour still unknown and time-gated. |
+| 6 | ESPN live-sync experiment | **DONE — answered NO, feature CUT.** The read API is blind to an in-progress draft (browser at pick 67, API reported 0). Manual entry is the only input path. |
 | 7 | League-history opponent priors | Not started. Data on disk and richer than expected. |
 | 8 | LLM explanation layer | Not started. Still first to cut. |
 
@@ -74,8 +74,10 @@ Ignore every `FF Pts` column — that is the provider's scoring, not ours
 
 ## Facts established since the spec was written
 
-- **ESPN cookies work** (verified 2026-08-19) and `mDraftDetail` returns all
-  264 slots pre-draft.
+- **ESPN cookies work** and `mDraftDetail` returns all 264 slots pre-draft —
+  but it does **not** update during a live draft (verified 2026-08-20 against a
+  mock at pick 67). `inProgress` does flip true, so liveness is detectable even
+  though picks are not.
 - **ESPN's grid does not reflect trades.** 254/264 slots match our generated
   schedule exactly; the 10 diffs are precisely our 10 traded picks, and ESPN
   shows the *original* owner every time.
@@ -108,10 +110,13 @@ Ignore every `FF Pts` column — that is the provider's scoring, not ours
 
 ## Open questions and risks
 
-1. **Does `mDraftDetail` update live, and at what latency?** Experiment #1,
-   still unanswered — it needs a draft actually in progress, so it can only be
-   tested against a mock before the 28th. If it doesn't update live, cut sync
-   entirely and reclaim the time.
+1. ~~Does `mDraftDetail` update live?~~ **ANSWERED 2026-08-20: no.** Tested
+   against a live mock at pick 67 of 264 — `mDraftDetail`, `mRoster`, `mTeam`
+   and `mMatchup` all reported zero picks and zero rostered players, with fresh
+   cookies. Live sync is CUT (see docs/decisions.md). **New risk in its place:
+   manual entry is now the single point of failure for draft input** — it must
+   be fast, undoable, and show a picks-entered-vs-picks-elapsed counter so a
+   missed entry is visible immediately.
 2. **Are the 10 trades registered in ESPN at all?** ESPN shows original owners.
    If ESPN doesn't know about the trades, it will put the wrong manager on the
    clock on draft day. Confirm with the commissioner.
@@ -144,16 +149,18 @@ Ignore every `FF Pts` column — that is the provider's scoring, not ours
 
 ## Next steps, in order
 
-1. **Run `tools/poll_draft.py` against a live mock draft.** Time-gated — it
-   cannot be done after the 28th. Answers risk #1.
-2. **Hand-review `data/crosswalk_review.csv`** (83 rows), fill
-   `resolved_espn_id`, then freeze the crosswalk. Blocks anything that joins
-   projections to draft-day picks.
-3. **Projection loader**: 4for4 columns → canonical stat names → the scoring
-   engine, producing a valued player pool. The engine is done and tested; this
-   is the I/O half. Resolve kicker scoring (risk #5) first or accept K = PAT
-   points only.
-4. **VOR baselines** off the valued pool (priority #5's prerequisite).
+1. **Projection loader**: 4for4 columns → canonical stat names → crosswalk →
+   the scoring engine, producing a valued player pool keyed by ESPN id.
+   Kickers come from ESPN (stat id 214), everything else from 4for4. This is
+   the blocker — nothing downstream can start without a valued pool.
+2. **VOR baselines** off that pool. Note the DL/LB baselines must be recomputed
+   using ESPN's slotting, not 4for4's: 15 edge rushers (Parsons, Watt, Mack,
+   Gary, Chubb...) are LB in 4for4 and DL in ESPN, and ESPN governs lineup
+   legality.
+3. **Freeze the crosswalk** — the review is merged, so invariant #3 is
+   satisfiable now.
+4. **Manual pick entry + UI.** Now the only input path, so it carries more
+   weight than originally planned.
 5. **Positional-timing priors from `data/historical/`** — smooth across all
    three years; per-year IDP counts swing enough (DE 20/26/20, DT 5/3/6) that
    any single season is noise.

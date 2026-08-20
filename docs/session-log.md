@@ -239,3 +239,35 @@ Added three named kicker tests (176 total now). Corrected the misleading
   conflict. Worth adding a config-vs-ESPN keeper diff at that point.
 - **`POSITION_ALIASES` in `engine/positions.py` confirmed** as correct.
 - **`data/crosswalk_review.csv` is now committed** with its own `!` exception.
+
+---
+
+## 2026-08-20 — Experiment #1: does mDraftDetail update live? NO.
+
+Ran `tools/poll_draft.py` against a live ESPN mock draft (league 1596648425 —
+same 12 teams and same round-1 order as our real league, so a faithful clone).
+
+Method: background poll at 3s intervals with `--dump`, ~33 snapshots captured
+to `data/draft_snapshots/`, while the draft ran in the browser.
+
+Result, with the browser at **pick 67 of 264**:
+
+| view | picks with real playerId | rostered players |
+|---|---|---|
+| mDraftDetail | 0 | – |
+| mRoster | 0 | 0 |
+| mTeam | 0 | 0 |
+| mMatchup | 0 | 0 |
+| mStatus / mSettings | 0 | – |
+
+`inProgress=True` throughout, so the API knows a draft is happening — it just
+will not tell you what was picked. Re-verified after the espn_s2 cookie was
+refreshed mid-experiment, ruling out stale auth.
+
+Decision recorded in docs/decisions.md: **cut live sync**. See that entry for
+consequences. Net effect on the schedule: priority #6 disappears, and the time
+goes to the projection loader, VOR, and making manual entry good.
+
+Note for the poller: it reads `.env` once at startup, so refreshing cookies
+mid-run requires a restart. Fine for a throwaway, worth knowing on draft day if
+we use it for post-draft reconciliation.

@@ -61,3 +61,29 @@ mapped to our DL/LB/DB slots.
 The historical CSVs carry a populated `Keeper` column (36 per year, matching
 3/team). No need to diff against prior end-of-season rosters as CLAUDE.md
 originally speculated.
+
+## 2026-08-20 — CUT ESPN live draft sync. Manual entry is the only input path.
+Experiment #1 run against a live ESPN mock draft (league 1596648425, a clone of
+our league). With the browser at pick 67 of 264, the read API reported
+`picks with a real playerId: 0` and `rostered players: 0`. Checked
+`mDraftDetail`, `mRoster`, `mTeam`, `mMatchup`, `mStatus`, `mSettings` — every
+one blind to the in-progress draft. Re-verified after refreshing the espn_s2
+cookie, so this is not an auth artifact.
+
+`lm-api-reads.fantasy.espn.com` is a READ REPLICA and does not carry in-flight
+draft state. ESPN's own draft client uses a separate live channel we are not
+going to reverse-engineer with 8 days left.
+
+What still works and is worth keeping:
+  - `inProgress` DOES flip true, so we can detect that a draft is live.
+  - The pre-draft 264-slot grid with per-slot `teamId` is available and already
+    validated our generated schedule (254/264, the 10 diffs being our trades).
+
+Consequences:
+  - Priority #6 (live sync integration) is CUT. Do not build it.
+  - Manual pick entry is the ONLY input path and must be excellent: fast entry,
+    undo, and a visible "picks entered vs picks elapsed" counter.
+  - DraftState keeps its `espn_sync` source and precedence rules — harmless,
+    already tested, and it costs nothing to leave the seam in place.
+  - `tools/poll_draft.py` has served its purpose; keep it only for a post-draft
+    reconciliation pass (the API should show final results once `drafted=True`).

@@ -19,7 +19,8 @@ our starting lineup.
     python3 tools/clean_fantasypros.py
 
 Positions are FantasyPros' NFL positions; `slot` maps them to our roster slots
-(DL/LB/DB) per docs/league-config.toml.
+(DL/LB/DB) via engine.positions, which is shared with the crosswalk builder and
+the historical-draft reader.
 """
 
 from __future__ import annotations
@@ -29,12 +30,13 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from engine.positions import UnknownPositionError, slot_for_position
+
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "fantasypros" / "idp.csv"
 OUT = ROOT / "data" / "fantasypros" / "idp_clean.csv"
-
-# FantasyPros NFL position -> our roster slot (see [roster.slots])
-SLOT = {"DE": "DL", "DT": "DL", "LB": "LB", "CB": "DB", "S": "DB"}
 
 RANK_RE = re.compile(r"^(\d+)\t*$")
 NAME_RE = re.compile(r"^(.+?)\s*\(([A-Z]{2,3})\)\s*$")
@@ -85,8 +87,10 @@ def main() -> int:
                 return 1
 
             pos = pm.group(1)
-            if pos not in SLOT:
-                print(f"unknown position {pos!r} at rank {rank}", file=sys.stderr)
+            try:
+                slot = slot_for_position(pos)
+            except UnknownPositionError as e:
+                print(f"rank {rank}: {e}", file=sys.stderr)
                 return 1
 
             rows.append(
@@ -96,7 +100,7 @@ def main() -> int:
                     "team": nm.group(2),
                     "pos": pos,
                     "pos_rank": int(pm.group(2)),
-                    "slot": SLOT[pos],
+                    "slot": slot,
                     "bye": pm.group(3).strip(),
                     "sos": pm.group(4).strip(),
                     "ecr_vs_adp": ecr_line.strip(),

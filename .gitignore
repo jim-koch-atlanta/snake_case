@@ -20,3 +20,4 @@ data/*
 # ...except the crosswalk, which is hand-review effort over public player
 # names, not league-private data. Losing it means redoing the review.
 !data/crosswalk.csv
+!data/crosswalk_review.csv

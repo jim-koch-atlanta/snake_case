@@ -19,6 +19,12 @@ one whose position disagrees — goes to review rather than being guessed.
     uv run python -m sources.build_crosswalk
     uv run python -m sources.build_crosswalk --refresh   # re-fetch ESPN players
 
+Rebuilding REFUSES to clobber hand-review work: if the existing review file has
+any `resolved_espn_id` filled in, or the crosswalk contains `hand_reviewed`
+rows, the run aborts unless `--refresh` is passed. With `--refresh`, existing
+resolutions are carried forward onto rows whose (source, source_key) still
+matches, so a rebuild costs you nothing you had already decided.
+
 NOT frozen by this script. Freezing happens after hand review (invariant #3).
 """
 
@@ -396,10 +402,49 @@ def classify(row: SourceRow, cands: list[tuple[EspnPlayer, float]]) -> tuple[str
 # main
 # --------------------------------------------------------------------------
 
+def _prior_resolutions() -> dict[tuple[str, str], str]:
+    """Existing hand-review answers, keyed by (source, source_key).
+
+    Read back so a rebuild can carry them forward instead of discarding them.
+    """
+    if not OUT_REVIEW.exists():
+        return {}
+    out: dict[tuple[str, str], str] = {}
+    with OUT_REVIEW.open(newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            value = (row.get("resolved_espn_id") or "").strip()
+            if value:
+                out[(row.get("source", ""), row.get("source_key", ""))] = value
+    return out
+
+
+def _has_hand_reviewed() -> bool:
+    if not OUT_MATCHED.exists():
+        return False
+    with OUT_MATCHED.open(newline="", encoding="utf-8-sig") as f:
+        return any(r.get("match_type") == "hand_reviewed" for r in csv.DictReader(f))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--refresh", action="store_true", help="re-fetch ESPN player list")
+    ap.add_argument(
+        "--refresh", action="store_true",
+        help="re-fetch the ESPN player list AND allow overwriting reviewed files "
+             "(existing resolutions are carried forward)",
+    )
     args = ap.parse_args()
+
+    prior = _prior_resolutions()
+    if prior and not args.refresh:
+        print(
+            f"REFUSING to rebuild: {len(prior)} hand-reviewed resolution(s) exist in "
+            f"{OUT_REVIEW.name}"
+            + (f" and {OUT_MATCHED.name} contains hand_reviewed rows" if _has_hand_reviewed() else "")
+            + ".\n  Rebuilding would overwrite them. Pass --refresh to rebuild anyway "
+              "(resolutions for unchanged players are carried forward).",
+            file=sys.stderr,
+        )
+        return 1
 
     try:
         espn = load_espn(refresh=args.refresh)
@@ -456,7 +501,9 @@ def main() -> int:
                     "source_name": row.name, "source_team": row.team,
                     "source_pos": row.position, "slot": row.slot,
                     "verdict": verdict, "reason": reason,
-                    "resolved_espn_id": "",  # <- fill this in by hand
+                    # carried forward from a previous review, if this player's
+                    # (source, source_key) is unchanged
+                    "resolved_espn_id": prior.get((row.source, row.key), ""),
                 }
                 for i in range(3):
                     if i < len(cands):
@@ -510,7 +557,11 @@ def main() -> int:
 
     print(f"\nwrote {OUT_MATCHED.relative_to(ROOT)} ({len(matched_rows)} rows)")
     print(f"wrote {OUT_REVIEW.relative_to(ROOT)} ({len(review_rows)} rows)")
-    print("\nNOT FROZEN. Fill `resolved_espn_id` in the review file, then freeze.")
+    carried = sum(1 for r in review_rows if r.get("resolved_espn_id"))
+    if carried:
+        print(f"carried forward {carried} existing hand-review resolution(s)")
+    print("\nNOT FROZEN. Fill `resolved_espn_id` in the review file, then run:")
+    print("  uv run python -m sources.merge_crosswalk")
     return 0
 
 

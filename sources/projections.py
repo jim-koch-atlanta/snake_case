@@ -182,7 +182,11 @@ def stat_line_from_row(row: Mapping[str, str], columns: Mapping[str, str]) -> di
     >>> stat_line_from_row({"Tackles": "38.1", "Assists": ""}, IDP_COLUMNS)
     {'solo_tackles': 38.1, 'assisted_tackles': 0.0}
     """
-    raise NotImplementedError("see tests/test_projections.py")
+    result = {}
+    for column_name, canonical_name in columns.items():
+        if column_name in row:
+            result[canonical_name] = float(row[column_name] or 0)
+    return result
 
 
 def top_by_slot(players: list[ValuedPlayer], slot: str, limit: int = 20) -> list[ValuedPlayer]:
@@ -192,7 +196,9 @@ def top_by_slot(players: list[ValuedPlayer], slot: str, limit: int = 20) -> list
     replacement is DL24 / LB24 / DB24, so ``top_by_slot(players, "DL", 24)[-1]``
     is the DL baseline).
     """
-    raise NotImplementedError("see tests/test_projections.py")
+    players_for_slot: list[ValuedPlayer] = [p for p in players if p.slot == slot]
+    players_for_slot.sort(key = lambda p : -p.points)
+    return players_for_slot[:limit]
 
 
 # ---------------------------------------------------------------------------

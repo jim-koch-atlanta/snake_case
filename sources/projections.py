@@ -35,6 +35,7 @@ from pathlib import Path
 
 from engine.positions import UnknownPositionError, slot_for_position
 from engine.scoring import score_stat_line
+from engine.vor import pool_from_points, replacement_levels, value_over_replacement
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -380,11 +381,42 @@ def load_projections(strict: bool = True) -> tuple[list[ValuedPlayer], LoadRepor
     return players, report
 
 
+def _print_vor(players: list[ValuedPlayer], args) -> int:
+    """Board ranked by value over replacement, across all positions."""
+    roster = tomllib.loads(CONFIG.read_text())["roster"]["slots"]
+    num_teams = tomllib.loads(CONFIG.read_text())["basics"]["teams"]
+    try:
+        pool = pool_from_points([(p.slot, p.points) for p in players])
+        levels = replacement_levels(pool, roster, num_teams)
+    except NotImplementedError as e:
+        print(f"\nVOR needs the TODO functions in engine/vor.py: {e}", file=sys.stderr)
+        return 1
+
+    print("\nreplacement levels (derived from roster slots, not hardcoded):")
+    for pos in sorted(levels, key=lambda p: -levels[p].points):
+        lv = levels[pos]
+        print(f"  {pos:<4} rank {lv.rank:>3}  baseline {lv.points:>7.1f}")
+
+    ranked = sorted(
+        players, key=lambda p: -value_over_replacement(p.points, p.slot, levels)
+    )
+    if args.slot:
+        ranked = [p for p in ranked if p.slot == args.slot.upper()]
+    print(f"\n=== top {args.limit} by VOR ===")
+    print(f"  {'#':>3}  {'player':<26} {'pos':<4} {'pts':>7} {'VOR':>7}")
+    for i, p in enumerate(ranked[:args.limit], 1):
+        v = value_over_replacement(p.points, p.slot, levels)
+        print(f"  {i:>3}. {p.name:<26} {p.slot:<4} {p.points:>7.1f} {v:>7.1f}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--slot", help="only show this roster slot (QB/RB/WR/TE/K/DL/LB/DB)")
     ap.add_argument("--limit", type=int, default=20)
     ap.add_argument("--lenient", action="store_true", help="report unmatched instead of failing")
+    ap.add_argument("--vor", action="store_true",
+                    help="rank by value over replacement instead of raw points")
     args = ap.parse_args()
 
     try:
@@ -409,6 +441,9 @@ def main() -> int:
         print("ESPN's classification governs which slot they can legally fill:")
         for espn_id, name, entries in report.duplicate_ids:
             print(f"  {name} ({espn_id}): {' | '.join(entries)}")
+
+    if args.vor:
+        return _print_vor(players, args)
 
     slots = [args.slot.upper()] if args.slot else ["QB", "RB", "WR", "TE", "K", "DL", "LB", "DB"]
     for slot in slots:

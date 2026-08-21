@@ -1,7 +1,6 @@
 # Project Notes — Draft Copilot
 
-**Snapshot: 2026-08-19 (updated after unattended session). Draft: Friday
-2026-08-28, 10:00 AM EDT — 9 days out.**
+**Snapshot: 2026-08-21. Draft: Friday 2026-08-28, 10:00 AM EDT — 7 days out.**
 
 Running status of the build against the plan in `CLAUDE.md` and `README.md`.
 Those two files are the *spec*; this file is the *state*. When they disagree,
@@ -13,16 +12,17 @@ this file is newer — fold the correction back into them.
 
 | # | Item | State |
 |---|---|---|
-| 1 | Pick-schedule generator (snake-with-holes) | **Done.** Tested, running on real league data, cross-checked against ESPN. |
-| 2 | Player ID crosswalk | **Built, awaiting hand review.** 1979 auto-matched, 83 in `data/crosswalk_review.csv`. NOT frozen. |
-| 3 | Custom-scoring valuation | **Scoring engine done** (`engine/scoring.py`), tests hand-computed. Projection loader (4for4 columns → canonical stats) not written. Kicker scoring blocked — see session log. |
-| 4 | DraftState + manual entry + UI | **Core done** (`engine/draft_state.py`): event log, replay, reconciliation. Manual entry and UI not started, deliberately. |
-| 5 | VONA/survival + feasibility guard | Not started. Input source decided (league history, not ADP). |
-| 6 | ESPN live-sync experiment | **DONE — answered NO, feature CUT.** The read API is blind to an in-progress draft (browser at pick 67, API reported 0). Manual entry is the only input path. |
-| 7 | League-history opponent priors | Not started. Data on disk and richer than expected. |
+| 1 | Pick-schedule generator | **Done.** Verified against ESPN's own grid (254/264, the 10 diffs being our trades). |
+| 2 | Player ID crosswalk | **Done.** 1979 auto + 83 hand-reviewed = 2062 rows, zero unresolved. Not formally "frozen" but the review is merged. |
+| 3 | Custom-scoring valuation | **Done.** `engine/scoring.py` + `sources/projections.py` → 1425 valued players. Kickers from ESPN (stat 214). |
+| 4 | DraftState + manual entry + UI | **Done.** `app/serve.py` serves a working board; keepers seeded; duplicate picks refused; full scrollable pick history. |
+| 5 | VONA/survival + feasibility guard | **VOR done** (`engine/vor.py`, baselines derived from slot counts). VONA and the feasibility guard **not started**. |
+| 6 | ESPN live-sync | **Answered.** The read API is blind to live drafts. The live WebSocket at `fantasydraft.espn.com` was reverse-engineered and fully specced (`docs/espn-draft-websocket.md`) but **not built** — manual entry is the input path. |
+| 7 | League-history opponent priors | Not started. Data on disk, richer than expected (Keeper column populated). |
 | 8 | LLM explanation layer | Not started. Still first to cut. |
 
-**18 commits, clean tree, 173 tests passing, ruff clean.**
+**Clean tree, 289 tests passing, ruff clean. The tool is usable end to end:
+`uv run python -m app.serve`.**
 
 ---
 

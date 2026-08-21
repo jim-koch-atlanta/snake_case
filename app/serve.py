@@ -192,6 +192,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if url.path == "/api/pick":
             player_id = int(body["player_id"])
+            # The client can always race itself -- a double Enter fires the
+            # second request against a board that has not reloaded yet. Guard
+            # here, where the truth is, not there.
+            if session.state.is_drafted(player_id):
+                name = session.by_id.get(player_id)
+                self._json({"error": f"{name.name if name else player_id} is already drafted"}, 409)
+                return
             team_id = int(body.get("team_id") or 0)
             if not team_id:
                 progress = draft_progress(session.schedule, session.state, session.cfg.my_team_id)

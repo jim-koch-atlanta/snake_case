@@ -84,7 +84,7 @@
 
 <script>
 const SLOTS = ["ALL","QB","RB","WR","TE","K","DL","LB","DB"];
-let slot = null, rows = [], sel = 0;
+let slot = null, rows = [], sel = 0, busy = false;
 
 const $ = id => document.getElementById(id);
 
@@ -135,15 +135,18 @@ async function loadState() {
 
 async function draft() {
   const r = rows[sel];
-  if (!r) return;
-  const res = await fetch("/api/pick", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ player_id: r.espn_id }),
-  });
-  if (!res.ok) { alert((await res.json()).error); return; }
-  $("q").value = ""; sel = 0;
-  await Promise.all([loadBoard(), loadState()]);
-  $("q").focus();
+  if (!r || busy) return;   // a second Enter must not fire on a stale board
+  busy = true;
+  try {
+    const res = await fetch("/api/pick", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ player_id: r.espn_id }),
+    });
+    if (!res.ok) { alert((await res.json()).error); return; }
+    $("q").value = ""; sel = 0;
+    await Promise.all([loadBoard(), loadState()]);
+    $("q").focus();
+  } finally { busy = false; }
 }
 
 async function undo() {

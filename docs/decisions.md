@@ -87,3 +87,26 @@ Consequences:
     already tested, and it costs nothing to leave the seam in place.
   - `tools/poll_draft.py` has served its purpose; keep it only for a post-draft
     reconciliation pass (the API should show final results once `drafted=True`).
+
+## 2026-08-21 — Cut the legal-lineup feasibility guard; ESPN enforces it
+CLAUDE.md originally specified a `picks_remaining − mandatory_unfilled_slots`
+guard, surfaced red at 0, to stop us drafting a 20th WR while still owing a K
+and two DBs. Not needed: the ESPN draft client itself **forces** you to take the
+minimum required positions late in the draft, so an illegal lineup is not a
+reachable state. Building our own version would duplicate the platform we are
+actually drafting on, and a second opinion that can disagree with the authority
+is worse than none.
+
+Residual worth knowing, not worth code: ESPN enforces at the point of the pick,
+not in advance. So it prevents the illegal roster but does not warn you early
+enough to plan around it — you can still be forced into a bad kicker in round 22
+rather than a decent one in round 20. The pick history panel and roster panel
+make that visible enough by eye for a 13-slot lineup.
+
+## 2026-08-21 — Manual entry is the only draft input; the WS listener stays unbuilt
+The live-draft WebSocket at `fantasydraft.espn.com` was reverse-engineered and
+is fully documented (docs/espn-draft-websocket.md), including that its auth is
+constructible from `.env`. It is deliberately NOT built. Manual entry works, is
+rehearsed, and is the documented primary path; a sync layer is upside, not a
+dependency, and every hour spent on it is an hour not spent rehearsing. Build it
+only if time remains after VONA.

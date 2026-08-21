@@ -33,7 +33,8 @@ Fantasy football draft-day decision support tool for a 12-team ESPN league.
 - **VOR baseline from OUR lineup**, per position, 12 teams: replacement ≈ RB19-20 (1 slot + flex share), WR ≈ WR41 (3 WR/TE slots + flex share), TE competes with WR38-41 (expect ~top-4 TEs only to clear the bar), QB12, K12, DL24, LB24, DB24. These ranks come from *slot counts*, so they hold regardless of scoring — but the point *spread* between a baseline and the players above it is scoring-dependent, and at 0.2/reception the WR spread is flatter than PPR intuition suggests (see League facts).
 - **VONA / survival model**: for each candidate, P(survives to my next live pick) from keeper-adjusted ADP (drop the 36 keepers, re-rank survivors, map rank → live pick number) with per-position σ. **Widen σ substantially for IDP** — IDP ADP is thin and noisy.
 - Monte Carlo the intervening picks (~1000 runs). Opponent rosters constrain positional need — keeper sets are known, so filled slots are hard constraints, not priors.
-- Recommendation = maximize `value(now) − E[best available at that position at my next pick]`, subject to the **legal-lineup feasibility guard**: `picks_remaining − mandatory_unfilled_slots` must never go negative. `mandatory_unfilled_slots` counts *every* still-unfillable starting slot — QB, RB, RB/WR, 3×WR/TE, 2DL, 2LB, 2DB, K (all 13 starters) — where a flex slot (RB/WR, WR/TE) is satisfied by any eligible position already rostered. In practice RB/WR/TE are over-drafted and never the binding constraint; QB, K, and the 6 IDP slots are what actually trip this. Surface it in the UI, red at 0.
+- Recommendation = maximize `value(now) − E[best available at that position at my next pick]`.
+- **The legal-lineup feasibility guard is CUT — do not build it.** ESPN's own draft client enforces minimum roster requirements: late in the draft it restricts your available picks to positions you still need, so an illegal lineup is not reachable. Duplicating that in our tool would be redundant with the platform we are drafting on. See docs/decisions.md 2026-08-21.
 - Late rounds (picks where all mandatory slots are fillable): stop optimizing EV, prefer variance/upside (bench is 9+3 IR vs only 6 offensive starters — stashes are cheap).
 
 ## Data sources
@@ -72,7 +73,7 @@ uv run python -m tools.mock_replay <draft_json>  # replay a recorded mock draft 
 2. Player ID crosswalk.
 3. Custom-scoring valuation from stat-level projections (IDP correctness > offense polish — half the lineup is IDP and that's the edge).
 4. DraftState + manual pick entry + minimal UI.
-5. VONA/survival engine + feasibility guard.
+5. VONA/survival engine. (The feasibility guard originally scoped here is CUT — ESPN enforces it.)
 6. ESPN live-sync experiment, then integration only if it works.
 7. League-history opponent priors.
 8. LLM explanation layer. **Cut this first if behind.**

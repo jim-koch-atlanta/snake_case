@@ -16,7 +16,7 @@ this file is newer — fold the correction back into them.
 | 2 | Player ID crosswalk | **Done.** 1979 auto + 83 hand-reviewed = 2062 rows, zero unresolved. Not formally "frozen" but the review is merged. |
 | 3 | Custom-scoring valuation | **Done.** `engine/scoring.py` + `sources/projections.py` → 1425 valued players. Kickers from ESPN (stat 214). |
 | 4 | DraftState + manual entry + UI | **Done.** `app/serve.py` serves a working board; keepers seeded; duplicate picks refused; full scrollable pick history. |
-| 5 | VONA/survival + feasibility guard | **VOR done** (`engine/vor.py`, baselines derived from slot counts). VONA and the feasibility guard **not started**. |
+| 5 | VONA/survival | **VOR done** (`engine/vor.py`, baselines derived from slot counts). VONA not started. The feasibility guard is **CUT** — ESPN's draft client enforces minimum roster requirements itself. |
 | 6 | ESPN live-sync | **Answered.** The read API is blind to live drafts. The live WebSocket at `fantasydraft.espn.com` was reverse-engineered and fully specced (`docs/espn-draft-websocket.md`) but **not built** — manual entry is the input path. |
 | 7 | League-history opponent priors | Not started. Data on disk, richer than expected (Keeper column populated). |
 | 8 | LLM explanation layer | Not started. Still first to cut. |

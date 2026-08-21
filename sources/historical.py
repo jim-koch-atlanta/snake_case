@@ -33,16 +33,18 @@ ALL_YEARS = (2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
 #: timing priors, because the model excludes keepers and an unflagged keeper
 #: silently inflates early-round demand.
 #:
-#: 2022's flags were reconstructed by hand from Jim's records and live in
-#: data/historical/keepers.json (all 12 teams at exactly 3, verified).
+#: 2021 and 2022 flags were reconstructed by hand from Jim's records and live
+#: in data/historical/keepers.json. Verified against the per-team counts: 2022
+#: has all 12 teams at exactly 3; 2021 has 35 keepers because one team kept
+#: only 2. Teams are NOT required to keep the full three.
 #:
-#: The 2016-2021 sheets still have no keeper column, and the league did have
+#: The 2016-2020 sheets still have no keeper column, and the league did have
 #: keepers then: "same player, same round, consecutive years" -- exactly what a keeper
 #: kept in its original round looks like -- fires 39-57 times per year in those
 #: seasons, indistinguishable from the 47-58 seen in years we know had 36.
 #: Inferring them is not good enough: calibrated against the flagged years the
 #: heuristic runs ~90% recall but only 55-70% precision.
-KEEPER_FLAGGED_YEARS = (2022, 2023, 2024, 2025)
+KEEPER_FLAGGED_YEARS = (2021, 2022, 2023, 2024, 2025)
 
 #: Safe default. Widen to ALL_YEARS once keeper flags exist for the older
 #: seasons -- see docs/session-log.md 2026-08-21.

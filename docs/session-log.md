@@ -271,3 +271,48 @@ goes to the projection loader, VOR, and making manual entry good.
 Note for the poller: it reads `.env` once at startup, so refreshing cookies
 mid-run requires a restart. Fine for a throwaway, worth knowing on draft day if
 we use it for post-draft reconciliation.
+
+---
+
+## 2026-08-21 — Seven more seasons of draft history (2016-2022)
+
+Converted from a single xlsx (one sheet per year) into per-year CSVs matching
+the 2023-25 format, via `tools/convert_historical_xlsx.py`. xlsx is a zip of
+XML, so the converter uses the standard library rather than adding openpyxl
+for a one-off. **2675 picks across 10 seasons now load.**
+
+The old sheets are shaped differently: rounds are separator rows rather than a
+column, `NO.` is a float string, `Player` packs name/NFL team/position as
+`"Derrick Henry Ten, RB"`, and `Team` is the fantasy manager. 2020 is 300 picks
+over 25 rounds (COVID), as expected.
+
+**Punters.** 2019 round 22 spent a pick on Kaare Vedvik (P). The league used to
+roster punters and dropped them for adding variance without signal. The loader
+now separates "a real position we do not roster" (skipped and reported) from "a
+position we do not recognise" (still raises), so a genuine typo stays loud.
+
+### Open: no keeper flags before 2023
+
+The 2016-2022 sheets have no keeper column, and the evidence says those drafts
+DID have keepers. "Same player, same round, consecutive years" -- what a keeper
+kept in its original round looks like -- fires 39-57 times per year in the old
+seasons, indistinguishable from the 47-58 in seasons we know had exactly 36.
+
+Inferring them is not good enough. Calibrated against the flagged years:
+
+| year | real keepers | heuristic flags | recall | precision |
+|---|---|---|---|---|
+| 2023 | 36 | 58 | 89% | 55% |
+| 2024 | 36 | 47 | 92% | 70% |
+| 2025 | 36 | 52 | 92% | 63% |
+
+Throwing out 11-22 genuine picks a year to catch 33 keepers is a bad trade.
+
+**Therefore `DEFAULT_YEARS` is the keeper-flagged set only (2023-25).** The
+older seasons load on request but print a warning, because timing priors built
+on them count kept players as live picks and overstate early-round demand by
+roughly 36 picks a year.
+
+Jim is looking for the keeper information for 2016-2022. If it turns up, widen
+`DEFAULT_YEARS` to `ALL_YEARS` and the priors get ~3x the data. If it does not,
+those seasons stay excluded.

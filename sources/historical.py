@@ -26,13 +26,35 @@ from engine.positions import UnknownPositionError, slot_for_position
 
 ROOT = Path(__file__).resolve().parent.parent
 HISTORICAL_DIR = ROOT / "data" / "historical"
-DEFAULT_YEARS = (2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
+#: Every season we hold data for.
+ALL_YEARS = (2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
+
+#: Seasons whose CSVs carry real keeper flags. Only these are trustworthy for
+#: timing priors, because the model excludes keepers and an unflagged keeper
+#: silently inflates early-round demand.
+#:
+#: The 2016-2022 sheets have no keeper column, but the league did have keepers
+#: then: "same player, same round, consecutive years" -- exactly what a keeper
+#: kept in its original round looks like -- fires 39-57 times per year in those
+#: seasons, indistinguishable from the 47-58 seen in years we know had 36.
+#: Inferring them is not good enough: calibrated against the flagged years the
+#: heuristic runs ~90% recall but only 55-70% precision.
+KEEPER_FLAGGED_YEARS = (2023, 2024, 2025)
+
+#: Safe default. Widen to ALL_YEARS once keeper flags exist for the older
+#: seasons -- see docs/session-log.md 2026-08-21.
+DEFAULT_YEARS = KEEPER_FLAGGED_YEARS
+
 TEAMS_PER_ROUND = 12
 
 #: Real NFL positions that this league does not roster. A pick at one of these
-#: is a historical fact we cannot slot -- 2019 round 22 spent a pick on a punter
-#: -- so it is excluded and counted, NOT treated as a data error. Anything
-#: outside this set still raises, so a genuine typo stays loud.
+#: is a historical fact we cannot slot, so it is excluded and counted, NOT
+#: treated as a data error. Anything outside this set still raises, so a
+#: genuine typo stays loud.
+#:
+#: The league used to roster punters and dropped them for adding variance
+#: without signal; 2019 round 22 spent a pick on one. Expect no P picks in
+#: recent seasons.
 UNROSTERABLE_POSITIONS = frozenset({"P", "PUNTER", "DST", "D/ST", "DEF", "OL", "FB"})
 
 
@@ -106,7 +128,20 @@ def load_year(year: int, directory: Path = HISTORICAL_DIR) -> list[HistoricalPic
 def load_drafts(
     years: tuple[int, ...] = DEFAULT_YEARS, directory: Path = HISTORICAL_DIR
 ) -> list[HistoricalPick]:
-    """Every pick from every available past draft, ordered by year then overall."""
+    """Every pick from the requested past drafts, ordered by year then overall.
+
+    Defaults to the keeper-flagged seasons only. Asking for a season without
+    keeper flags is allowed but warns, because timing priors built on it will
+    overstate early-round demand by roughly 36 picks a year.
+    """
+    unflagged = [y for y in years if y not in KEEPER_FLAGGED_YEARS]
+    if unflagged:
+        print(
+            f"  WARNING: {unflagged} have no keeper flags. Timing priors built on "
+            "them count kept players as live picks and will overstate early-round "
+            "demand. See KEEPER_FLAGGED_YEARS.",
+            file=sys.stderr,
+        )
     picks: list[HistoricalPick] = []
     for year in years:
         picks.extend(load_year(year, directory))

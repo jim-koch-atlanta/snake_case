@@ -18,6 +18,7 @@ File shape, which is not obvious:
 from __future__ import annotations
 
 import csv
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,8 +26,14 @@ from engine.positions import UnknownPositionError, slot_for_position
 
 ROOT = Path(__file__).resolve().parent.parent
 HISTORICAL_DIR = ROOT / "data" / "historical"
-DEFAULT_YEARS = (2023, 2024, 2025)
+DEFAULT_YEARS = (2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
 TEAMS_PER_ROUND = 12
+
+#: Real NFL positions that this league does not roster. A pick at one of these
+#: is a historical fact we cannot slot -- 2019 round 22 spent a pick on a punter
+#: -- so it is excluded and counted, NOT treated as a data error. Anything
+#: outside this set still raises, so a genuine typo stays loud.
+UNROSTERABLE_POSITIONS = frozenset({"P", "PUNTER", "DST", "D/ST", "DEF", "OL", "FB"})
 
 
 class HistoricalError(Exception):
@@ -53,6 +60,7 @@ def load_year(year: int, directory: Path = HISTORICAL_DIR) -> list[HistoricalPic
         raise HistoricalError(f"missing historical draft file: {path}")
 
     picks: list[HistoricalPick] = []
+    skipped: list[str] = []
     with path.open(newline="", encoding="utf-8-sig") as f:
         for line_no, row in enumerate(csv.DictReader(f), start=2):
             # the clean name lives in the unnamed third column; PLAYER joins
@@ -68,6 +76,9 @@ def load_year(year: int, directory: Path = HISTORICAL_DIR) -> list[HistoricalPic
                 pick_in_round = int(row["NO."])
             except (KeyError, ValueError) as e:
                 raise HistoricalError(f"{path.name} line {line_no}: bad Round/NO. — {e}") from e
+            if position.strip().upper() in UNROSTERABLE_POSITIONS:
+                skipped.append(f"{year} R{round_}.{pick_in_round} {name} ({position})")
+                continue
             try:
                 slot = slot_for_position(position)
             except UnknownPositionError as e:
@@ -86,6 +97,9 @@ def load_year(year: int, directory: Path = HISTORICAL_DIR) -> list[HistoricalPic
 
     if not picks:
         raise HistoricalError(f"{path.name} produced no picks")
+    if skipped:
+        print(f"  note: skipped {len(skipped)} pick(s) at positions this league does "
+              f"not roster: {', '.join(skipped)}", file=sys.stderr)
     return picks
 
 

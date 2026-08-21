@@ -10,12 +10,13 @@ from engine.board import (
     available_players,
     board_view,
     draft_progress,
+    high_water_mark,
     picks_until,
     roster_by_slot,
     search_players,
     to_board_players,
 )
-from engine.draft_state import MANUAL, DraftState
+from engine.draft_state import KEEPER, MANUAL, DraftState
 from engine.schedule import Keeper, build_pick_schedule
 from engine.vor import ReplacementLevel
 
@@ -258,6 +259,44 @@ def test_draft_progress_in_sync_when_every_pick_is_entered():
     p = draft_progress(sched, state, my_team_id=1)
     assert p.gap == 0 and p.in_sync
     assert p.on_the_clock == 4
+
+
+def test_seeded_keepers_do_not_inflate_the_high_water_mark():
+    """Keepers are seeded for the WHOLE draft before it starts.
+
+    Using max(recorded) as "where the draft is" made a round-22 keeper claim the
+    draft was over on pick one: elapsed jumped to 262 and MISSED to 226.
+    Only picks somebody actually made move the mark.
+    """
+    sched = schedule_4x3()
+    state = DraftState()
+    state.record(12, 4, 900, KEEPER)   # a keeper in the LAST round
+    state.record(1, 1, 100, MANUAL)    # the draft has only reached pick 1
+    assert high_water_mark(state) == 1
+    p = draft_progress(sched, state, my_team_id=1)
+    assert (p.entered, p.elapsed, p.gap) == (1, 1, 0)
+
+
+def test_a_keeper_below_the_mark_counts_as_a_filled_slot():
+    """The live bug: slot 12 is a keeper, so it can never be typed in. Without
+    seeding it, MISSED went to 1 and would have climbed to 36 over the draft."""
+    sched = build_pick_schedule([1, 2, 3, 4], 3, [Keeper(2, "kept", 1)])
+    state = DraftState()
+    state.record(2, 2, 900, KEEPER)          # seeded from config
+    for overall, team in ((1, 1), (3, 3), (4, 4)):
+        state.record(overall, team, 100 + overall, MANUAL)
+    p = draft_progress(sched, state, my_team_id=1)
+    assert p.gap == 0 and p.in_sync, "the keeper slot is filled, not missed"
+
+
+def test_a_genuinely_skipped_live_pick_still_registers():
+    """The counter must keep working — seeding keepers must not mask real gaps."""
+    sched = schedule_4x3()
+    state = DraftState()
+    state.record(1, 1, 101, MANUAL)
+    state.record(3, 3, 103, MANUAL)  # pick 2 never entered
+    p = draft_progress(sched, state, my_team_id=1)
+    assert p.gap == 1 and not p.in_sync
 
 
 def test_board_view_hides_drafted_players():

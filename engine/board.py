@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from engine.draft_state import DraftState, PickEvent
+from engine.draft_state import KEEPER, DraftState, PickEvent
 from engine.schedule import Pick
 from engine.vor import ReplacementLevel, value_over_replacement
 
@@ -75,6 +75,19 @@ def to_board_players(
     return rows
 
 
+def high_water_mark(state: DraftState) -> int:
+    """The furthest slot the draft has actually REACHED, as 0 if it has not.
+
+    Keepers are seeded for the whole draft before it starts, so they say nothing
+    about where the draft is — a round-22 keeper would otherwise claim the draft
+    is over on pick one. Only picks somebody actually made move this forward.
+    """
+    return max(
+        (p.overall_pick for p in state.resolved().values() if p.source != KEEPER),
+        default=0,
+    )
+
+
 def draft_progress(
     schedule: Sequence[Pick],
     state: DraftState,
@@ -82,13 +95,14 @@ def draft_progress(
 ) -> DraftProgress:
     """Compare the pick log against the schedule.
 
-    `elapsed` counts every slot at or before the highest overall pick we have
-    recorded — keepers included, since they occupy real slots. If someone drafts
-    and we do not type it, `gap` goes positive and stays there.
+    `elapsed` counts every slot up to the high-water mark; `entered` counts what
+    we have recorded up to the same point — keepers included, because a seeded
+    keeper below the mark IS a filled slot. The difference is picks the draft
+    made that nobody typed.
     """
     recorded = state.resolved()
-    entered = len(recorded)
-    highest = max(recorded, default=0)
+    highest = high_water_mark(state)
+    entered = sum(1 for overall in recorded if overall <= highest)
     elapsed = sum(1 for p in schedule if p.overall <= highest)
 
     remaining = [p for p in schedule if p.overall > highest and p.kind == "live"]

@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlparse
 from engine.board import (
     board_view,
     draft_progress,
+    high_water_mark,
     picks_until,
     roster_by_slot,
     to_board_players,
@@ -33,6 +34,7 @@ from engine.board import (
 from engine.draft_state import MANUAL, DraftState
 from engine.schedule import build_pick_schedule
 from engine.vor import pool_from_points, replacement_levels
+from sources.keepers import keeper_events
 from sources.league_config import load_league_config
 from sources.projections import load_projections
 
@@ -67,6 +69,13 @@ def build_session() -> Session:
     session = Session(cfg=cfg, schedule=schedule,
                       players=to_board_players(valued, levels), levels=levels,
                       state=DraftState())
+
+    # Keepers are known facts, not picks anyone types. Seed them first so the
+    # MISSED counter compares like with like -- without this it drifts to 36.
+    seeded = keeper_events(schedule)
+    session.state.extend(seeded)
+    print(f"seeded {len(seeded)} keepers from the config")
+
     _restore(session)
     return session
 
@@ -76,6 +85,8 @@ def _restore(session: Session) -> None:
     if not PICK_LOG.exists():
         return
     for e in json.loads(PICK_LOG.read_text()):
+        if e["source"] == "keeper":
+            continue  # already seeded from the config, which is authoritative
         session.state.record(e["overall_pick"], e["team_id"], e["player_id"], e["source"])
     print(f"restored {len(session.state.events)} pick event(s) from {PICK_LOG.name}")
 
@@ -85,7 +96,7 @@ def _persist(session: Session) -> None:
     PICK_LOG.write_text(json.dumps([
         {"overall_pick": e.overall_pick, "team_id": e.team_id,
          "player_id": e.player_id, "source": e.source}
-        for e in session.state.events
+        for e in session.state.events if e.source != "keeper"
     ], indent=2))
 
 
@@ -95,7 +106,7 @@ def state_payload(session: Session) -> dict:
     progress = draft_progress(session.schedule, session.state, my_id)
     names = {t.team_id: t.name for t in session.cfg.teams}
     roster = roster_by_slot(session.state.roster(my_id), session.by_id)
-    highest = max(session.state.resolved(), default=0)
+    highest = high_water_mark(session.state)
     return {
         "entered": progress.entered,
         "elapsed": progress.elapsed,
@@ -115,7 +126,9 @@ def state_payload(session: Session) -> dict:
              "player": (session.by_id.get(e.player_id).name
                         if session.by_id.get(e.player_id) else str(e.player_id)),
              "source": e.source}
-            for e in session.state.picks()[-8:]
+            # only picks the draft has actually reached — keepers are seeded
+            # across all 22 rounds, so an unfiltered tail shows round-22 keepers
+            for e in [x for x in session.state.picks() if x.overall_pick <= highest][-8:]
         ],
     }
 

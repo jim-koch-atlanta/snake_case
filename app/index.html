@@ -41,7 +41,16 @@
   .filters button.on { color:var(--text); border-color:var(--accent); }
   #roster div { padding:3px 12px; display:flex; justify-content:space-between; }
   #roster .slotname { color:var(--dim); }
-  #recent div { padding:3px 12px; color:var(--dim); font-size:12px; }
+  #recent { max-height:46vh; overflow-y:auto; }
+  #recent div { padding:3px 12px; color:var(--dim); font-size:12px;
+                display:flex; gap:8px; white-space:nowrap; }
+  #recent .ov { color:#5a6472; min-width:34px; text-align:right; }
+  #recent .tm { color:var(--dim); min-width:62px; }
+  #recent .pl { color:var(--text); overflow:hidden; text-overflow:ellipsis; }
+  #recent .kp { color:var(--warn); font-size:10px; align-self:center; }
+  /* keep the scrollbar unobtrusive on a dark panel */
+  #recent::-webkit-scrollbar { width:8px; }
+  #recent::-webkit-scrollbar-thumb { background:var(--line); border-radius:4px; }
   #banner { padding:8px 16px; display:none; }
   #banner.show { display:block; }
   kbd { background:var(--bg); border:1px solid var(--line); border-radius:3px;
@@ -75,7 +84,8 @@
 
   <div style="display:flex;flex-direction:column;gap:16px">
     <div class="panel"><h2>my roster</h2><div id="roster"></div></div>
-    <div class="panel"><h2>recent picks</h2><div id="recent"></div></div>
+    <div class="panel"><h2>picks <span id="pickcount" style="color:var(--dim)"></span></h2>
+      <div id="recent"></div></div>
     <div class="panel"><h2>actions</h2>
       <div style="padding:8px 12px"><button onclick="undo()">undo last pick</button></div>
     </div>
@@ -128,8 +138,11 @@ async function loadState() {
     ps.map(p => `<div><span>${p.name}</span><span class="slotname">${sl}</span></div>`).join("")
   ).join("") || `<div class="slotname" style="padding:8px 12px">nothing yet</div>`;
 
+  $("pickcount").textContent = s.recent.length ? `(${s.recent.length})` : "";
   $("recent").innerHTML = s.recent.slice().reverse().map(r =>
-    `<div>#${r.overall} ${r.team} — ${r.player}</div>`).join("")
+    `<div><span class="ov">#${r.overall}</span><span class="tm">${r.team}</span>` +
+    `<span class="pl">${r.player}</span>` +
+    `${r.source === "keeper" ? '<span class="kp">KEEP</span>' : ""}</div>`).join("")
     || `<div style="padding:8px 12px">no picks yet</div>`;
 }
 

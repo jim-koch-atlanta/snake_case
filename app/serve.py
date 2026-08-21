@@ -130,7 +130,9 @@ def state_payload(session: Session) -> dict:
              "source": e.source}
             # settled slots only — keepers are seeded across all 22 rounds, so
             # an unfiltered tail would show round-22 keepers on pick one
-            for e in [x for x in session.state.picks() if x.overall_pick <= settled][-8:]
+            # every settled pick — the page scrolls it, and mid-draft you often
+            # want to look back further than the last handful
+            for e in [x for x in session.state.picks() if x.overall_pick <= settled]
         ],
     }
 

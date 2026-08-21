@@ -14,6 +14,7 @@ from engine.board import (
     picks_until,
     roster_by_slot,
     search_players,
+    settled_through,
     to_board_players,
 )
 from engine.draft_state import KEEPER, MANUAL, DraftState
@@ -297,6 +298,38 @@ def test_a_genuinely_skipped_live_pick_still_registers():
     state.record(3, 3, 103, MANUAL)  # pick 2 never entered
     p = draft_progress(sched, state, my_team_id=1)
     assert p.gap == 1 and not p.in_sync
+
+
+def test_undo_does_not_hide_a_keeper_below_the_undone_pick():
+    """The rehearsal report: "when I undo #13 it also undoes #12".
+
+    It never did — #12 is a keeper and was untouched. But the recent-picks feed
+    was cut at the high-water mark, which drops to 11 on undo, so the keeper
+    vanished from view and read as deleted. Settled-through keeps it visible.
+    """
+    sched = build_pick_schedule([1, 2, 3, 4], 3, [Keeper(2, "kept", 1)])
+    state = DraftState()
+    state.record(2, 2, 900, KEEPER)                  # slot 2 is a keeper
+    state.record(1, 1, 101, MANUAL)
+    state.record(3, 3, 103, MANUAL)
+    assert settled_through(sched, state) == 3
+
+    # undo slot 3 -> the keeper at slot 2 must still be settled and visible
+    state.events.pop()
+    assert high_water_mark(state) == 1, "the mark rewinds"
+    assert settled_through(sched, state) == 2, "but the keeper stays settled"
+
+
+def test_settled_through_is_zero_before_any_pick():
+    assert settled_through(schedule_4x3(), DraftState()) == 0
+
+
+def test_settled_through_covers_the_whole_draft_when_complete():
+    sched = schedule_4x3()
+    state = DraftState()
+    for p in sched:
+        state.record(p.overall, p.team_id, 1000 + p.overall, MANUAL)
+    assert settled_through(sched, state) == 12
 
 
 def test_board_view_hides_drafted_players():

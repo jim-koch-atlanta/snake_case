@@ -29,6 +29,7 @@ from engine.board import (
     high_water_mark,
     picks_until,
     roster_by_slot,
+    settled_through,
     to_board_players,
 )
 from engine.draft_state import MANUAL, DraftState
@@ -107,6 +108,7 @@ def state_payload(session: Session) -> dict:
     names = {t.team_id: t.name for t in session.cfg.teams}
     roster = roster_by_slot(session.state.roster(my_id), session.by_id)
     highest = high_water_mark(session.state)
+    settled = settled_through(session.schedule, session.state)
     return {
         "entered": progress.entered,
         "elapsed": progress.elapsed,
@@ -126,9 +128,9 @@ def state_payload(session: Session) -> dict:
              "player": (session.by_id.get(e.player_id).name
                         if session.by_id.get(e.player_id) else str(e.player_id)),
              "source": e.source}
-            # only picks the draft has actually reached — keepers are seeded
-            # across all 22 rounds, so an unfiltered tail shows round-22 keepers
-            for e in [x for x in session.state.picks() if x.overall_pick <= highest][-8:]
+            # settled slots only — keepers are seeded across all 22 rounds, so
+            # an unfiltered tail would show round-22 keepers on pick one
+            for e in [x for x in session.state.picks() if x.overall_pick <= settled][-8:]
         ],
     }
 

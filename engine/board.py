@@ -120,6 +120,24 @@ def draft_progress(
     )
 
 
+def settled_through(schedule: Sequence[Pick], state: DraftState) -> int:
+    """The last slot the draft has settled — everything at or below is decided.
+
+    Settled means: below the first LIVE slot we have not recorded. Keepers count
+    as settled whether or not the draft has reached them, because they are
+    filled by definition.
+
+    Deliberately NOT the high-water mark. Undoing pick 13 drops the mark to 11,
+    which would hide the keeper at slot 12 and read as "undo removed my keeper
+    too" when the keeper is untouched.
+    """
+    recorded = state.resolved()
+    for pick in schedule:
+        if pick.kind == "live" and pick.overall not in recorded:
+            return pick.overall - 1
+    return schedule[-1].overall if schedule else 0
+
+
 def board_view(
     players: Sequence[BoardPlayer],
     state: DraftState,

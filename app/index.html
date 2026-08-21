@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Draft Copilot</title>
+<style>
+  :root { --bg:#12151a; --panel:#1a1f27; --line:#2b323d; --text:#e6eaf0;
+          --dim:#8b95a5; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+          --accent:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  header { display:flex; gap:24px; align-items:center; padding:10px 16px;
+           background:var(--panel); border-bottom:1px solid var(--line);
+           position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+  .stat { display:flex; flex-direction:column; line-height:1.2; }
+  .stat b { font-size:19px; }
+  .stat span { color:var(--dim); font-size:11px; text-transform:uppercase; }
+  .ok { color:var(--good); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  main { display:grid; grid-template-columns:1fr 340px; gap:16px; padding:16px;
+         align-items:start; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:6px; }
+  .panel h2 { margin:0; padding:8px 12px; font-size:12px; text-transform:uppercase;
+              color:var(--dim); border-bottom:1px solid var(--line); }
+  #q { width:100%; padding:10px 12px; font:inherit; font-size:16px;
+       background:var(--bg); color:var(--text);
+       border:1px solid var(--line); border-radius:6px 6px 0 0; outline:none; }
+  #q:focus { border-color:var(--accent); }
+  table { width:100%; border-collapse:collapse; }
+  td, th { padding:5px 10px; text-align:left; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:normal; font-size:11px; text-transform:uppercase; }
+  tbody tr { cursor:pointer; }
+  tbody tr:hover, tr.sel { background:#243040; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .vor { color:var(--accent); }
+  .slot { color:var(--dim); }
+  .filters { display:flex; gap:6px; padding:8px 12px; flex-wrap:wrap; }
+  .filters button { background:var(--bg); color:var(--dim); border:1px solid var(--line);
+                    border-radius:4px; padding:3px 9px; cursor:pointer; font:inherit;
+                    font-size:12px; }
+  .filters button.on { color:var(--text); border-color:var(--accent); }
+  #roster div { padding:3px 12px; display:flex; justify-content:space-between; }
+  #roster .slotname { color:var(--dim); }
+  #recent div { padding:3px 12px; color:var(--dim); font-size:12px; }
+  #banner { padding:8px 16px; display:none; }
+  #banner.show { display:block; }
+  kbd { background:var(--bg); border:1px solid var(--line); border-radius:3px;
+        padding:1px 5px; font-size:11px; color:var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <div class="stat"><b id="s-clock">–</b><span>on the clock</span></div>
+  <div class="stat"><b id="s-until">–</b><span>picks until me</span></div>
+  <div class="stat"><b id="s-next">–</b><span>my next pick</span></div>
+  <div class="stat"><b id="s-entered">0</b><span>entered</span></div>
+  <div class="stat"><b id="s-gap">0</b><span>missed</span></div>
+  <div style="margin-left:auto;color:var(--dim);font-size:12px">
+    <kbd>↑↓</kbd> move &nbsp; <kbd>enter</kbd> draft to team on clock &nbsp; <kbd>esc</kbd> clear
+  </div>
+</header>
+
+<div id="banner" class="panel"></div>
+
+<main>
+  <div class="panel">
+    <input id="q" placeholder="type a name, then Enter to record the pick…" autofocus autocomplete="off">
+    <div class="filters" id="filters"></div>
+    <table>
+      <thead><tr><th>#</th><th>player</th><th>pos</th><th>team</th>
+                 <th class="num">pts</th><th class="num">VOR</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="panel"><h2>my roster</h2><div id="roster"></div></div>
+    <div class="panel"><h2>recent picks</h2><div id="recent"></div></div>
+    <div class="panel"><h2>actions</h2>
+      <div style="padding:8px 12px"><button onclick="undo()">undo last pick</button></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const SLOTS = ["ALL","QB","RB","WR","TE","K","DL","LB","DB"];
+let slot = null, rows = [], sel = 0;
+
+const $ = id => document.getElementById(id);
+
+function drawFilters() {
+  $("filters").innerHTML = SLOTS.map(s =>
+    `<button class="${(slot||'ALL')===s?'on':''}" onclick="setSlot('${s}')">${s}</button>`
+  ).join("");
+}
+function setSlot(s) { slot = (s === "ALL" ? null : s); drawFilters(); loadBoard(); }
+
+async function loadBoard() {
+  const p = new URLSearchParams({ q: $("q").value, limit: 50 });
+  if (slot) p.set("slot", slot);
+  rows = (await (await fetch("/api/board?" + p)).json()).players;
+  if (sel >= rows.length) sel = Math.max(0, rows.length - 1);
+  $("rows").innerHTML = rows.map((r, i) => `
+    <tr class="${i===sel?'sel':''}" onclick="sel=${i};draft()">
+      <td class="slot">${i+1}</td><td>${r.name}</td>
+      <td class="slot">${r.slot}</td><td class="slot">${r.team||""}</td>
+      <td class="num">${r.points.toFixed(1)}</td>
+      <td class="num vor">${r.vor.toFixed(1)}</td></tr>`).join("");
+}
+
+async function loadState() {
+  const s = await (await fetch("/api/state")).json();
+  $("s-clock").textContent   = s.on_the_clock ?? "–";
+  $("s-until").textContent   = s.picks_until_mine ?? "–";
+  $("s-next").textContent    = s.my_next_overall ?? "–";
+  $("s-entered").textContent = s.entered;
+  const gap = $("s-gap");
+  gap.textContent = s.gap;
+  gap.className = s.gap === 0 ? "ok" : "bad";
+
+  const msgs = [];
+  if (s.gap > 0) msgs.push(`<span class="bad">${s.gap} pick(s) happened that you have not entered.</span>`);
+  s.conflicts.forEach(c => msgs.push(`<span class="warn">${c}</span>`));
+  $("banner").className = "panel" + (msgs.length ? " show" : "");
+  $("banner").innerHTML = msgs.join("<br>");
+
+  $("roster").innerHTML = Object.entries(s.roster).map(([sl, ps]) =>
+    ps.map(p => `<div><span>${p.name}</span><span class="slotname">${sl}</span></div>`).join("")
+  ).join("") || `<div class="slotname" style="padding:8px 12px">nothing yet</div>`;
+
+  $("recent").innerHTML = s.recent.slice().reverse().map(r =>
+    `<div>#${r.overall} ${r.team} — ${r.player}</div>`).join("")
+    || `<div style="padding:8px 12px">no picks yet</div>`;
+}
+
+async function draft() {
+  const r = rows[sel];
+  if (!r) return;
+  const res = await fetch("/api/pick", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ player_id: r.espn_id }),
+  });
+  if (!res.ok) { alert((await res.json()).error); return; }
+  $("q").value = ""; sel = 0;
+  await Promise.all([loadBoard(), loadState()]);
+  $("q").focus();
+}
+
+async function undo() {
+  await fetch("/api/undo", { method: "POST" });
+  await Promise.all([loadBoard(), loadState()]);
+}
+
+$("q").addEventListener("input", () => { sel = 0; loadBoard(); });
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { sel = Math.min(sel + 1, rows.length - 1); loadBoard(); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); loadBoard(); e.preventDefault(); }
+  else if (e.key === "Enter") { draft(); }
+  else if (e.key === "Escape") { $("q").value = ""; sel = 0; loadBoard(); }
+});
+
+drawFilters(); loadBoard(); loadState();
+setInterval(loadState, 3000);
+</script>
+</body>
+</html>

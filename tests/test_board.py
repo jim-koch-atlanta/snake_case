@@ -121,6 +121,22 @@ def test_from_the_start_of_the_draft():
     assert picks_until(schedule_4x3(), my_team_id=4, after_overall=0) == 3
 
 
+def test_my_own_keeper_slot_is_not_my_next_pick():
+    """The bug this catches: a keeper slot belongs to me but is NOT a pick I make.
+
+    Jim's real schedule: live at overall 6, KEEPER at 19 (McCaffrey), live at 30.
+    Returning at slot 19 reports 11 picks to wait when the answer is 21, and on
+    draft night that reads as "you are up soon" when you are not.
+
+    Here in miniature: team 1 picks at overall 1, keeps at 8, picks again at 9.
+    Between 1 and 9 the live picks are 2,3,4,5,6,7 = 6.
+    """
+    sched = build_pick_schedule([1, 2, 3, 4], 3, [Keeper(1, "my keeper", 2)])
+    kept = [p for p in sched if p.team_id == 1 and p.kind == "keeper"]
+    assert [p.overall for p in kept] == [8], "fixture: team 1 keeps its round-2 slot"
+    assert picks_until(sched, my_team_id=1, after_overall=1) == 6
+
+
 def test_keeper_slots_do_not_count_as_picks_to_wait_for():
     """Keepers are pre-assigned; nobody waits on them."""
     sched = build_pick_schedule([1, 2, 3, 4], 3, [Keeper(2, "kept", 1)])
@@ -167,6 +183,20 @@ def test_prefix_matches_rank_above_contains_matches():
     assert "Jack Campbell" in names
 
 
+def test_a_surname_prefix_ranks_as_high_as_a_first_name_prefix():
+    """Rule 2: match any WORD, not just the start of the full name.
+
+    The live failure this catches: typing "chase" for the consensus WR1 and
+    getting Chase Brown, Chase McLaughlin and Chase Young instead, with
+    Ja'Marr Chase nowhere on screen. A prefix of ANY word is a prefix match;
+    VOR order then decides between them.
+    """
+    pool = [bp(1, "Chase Brown", "RB", vor=14.7), bp(2, "Ja'Marr Chase", "WR", vor=109.7)]
+    # incoming order is VOR-sorted, so Ja'Marr comes first
+    pool.sort(key=lambda p: -p.vor)
+    assert [p.name for p in search_players(pool, "chase")] == ["Ja'Marr Chase", "Chase Brown"]
+
+
 def test_ties_keep_the_incoming_vor_order():
     """Two equally good matches stay in the order given (already VOR-sorted)."""
     pool = [bp(1, "Aaron Smith", vor=90.0), bp(2, "Zach Smith", vor=10.0)]
@@ -179,6 +209,19 @@ def test_empty_query_returns_everything():
 
 def test_limit_caps_the_result():
     assert len(search_players(POOL, "", limit=2)) == 2
+
+
+def test_a_better_match_later_in_the_pool_is_not_crowded_out():
+    """The bug this catches: stopping the scan once `limit` results exist.
+
+    A prefix match that appears AFTER `limit` weaker "contains" matches must
+    still rank first. With 1425 players and a 2-3 character query this fires
+    constantly — the player you are typing simply never appears.
+    """
+    pool = [bp(i, f"Coleman Guy{i}") for i in range(10)] + [bp(99, "Manny Best")]
+    got = search_players(pool, "man", limit=10)
+    assert got[0].name == "Manny Best", "prefix match must outrank contains matches"
+    assert len(got) == 10
 
 
 def test_no_match_gives_empty_list():

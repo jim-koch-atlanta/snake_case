@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from engine.draft_state import DraftState
+from engine.draft_state import DraftState, PickEvent
 from engine.schedule import Pick
 from engine.vor import ReplacementLevel, value_over_replacement
 
@@ -138,11 +138,11 @@ def available_players(
     >>> available_players([a, b, c], {b.espn_id})
     [a, c]
     """
-    raise NotImplementedError("see tests/test_board.py")
+    return [p for p in players if p.espn_id not in drafted_ids]
 
 
 def roster_by_slot(
-    picks: Sequence, players_by_id: Mapping[int, BoardPlayer]
+    picks: Sequence[PickEvent], players_by_id: Mapping[int, BoardPlayer]
 ) -> dict[str, list[BoardPlayer]]:
     """Group my drafted players by roster slot.
 
@@ -157,7 +157,12 @@ def roster_by_slot(
     >>> roster_by_slot([pick_wr, pick_wr2, pick_lb], by_id)
     {'WR': [chase, nacua], 'LB': [campbell]}
     """
-    raise NotImplementedError("see tests/test_board.py")
+    result: dict[str, list[BoardPlayer]] = {}
+    for pick in picks:
+        player = players_by_id.get(pick.player_id)
+        if player is not None:
+            result.setdefault(player.slot, []).append(player)
+    return result
 
 
 def picks_until(schedule: Sequence[Pick], my_team_id: int, after_overall: int) -> int | None:
@@ -172,7 +177,14 @@ def picks_until(schedule: Sequence[Pick], my_team_id: int, after_overall: int) -
     >>> picks_until(schedule, my_team_id=14, after_overall=6)
     23
     """
-    raise NotImplementedError("see tests/test_board.py")
+    picks: int = 0
+    for pick in schedule:
+        if pick.overall > after_overall and pick.kind != "keeper":
+            if pick.team_id == my_team_id:
+                return picks
+            picks = picks + 1
+
+    return None
 
 
 def search_players(
@@ -206,4 +218,39 @@ def search_players(
     >>> [p.name for p in search_players(pool, "chase")]
     ["Ja'Marr Chase"]
     """
-    raise NotImplementedError("see tests/test_board.py")
+    output_startswith_worded: list[BoardPlayer] = []
+    output_startswith_squashed: list[BoardPlayer] = []
+    output_contains_worded: list[BoardPlayer] = []
+    output_contains_squashed: list[BoardPlayer] = []
+
+    def normalize(word: str) -> tuple[str, str]:
+        worded = word.lower().replace("'", " ").replace(".", " ").replace("-", " ")
+        squashed = worded.replace(" ", "")
+        return (worded, squashed)
+
+    (query_worded, query_squashed) = normalize(query) 
+
+    if len(query_squashed) == 0:
+        return players[:limit]
+    
+    for player in players:
+        (worded, squashed) = normalize(player.name)
+        if any(w.startswith(query_worded) for w in worded.split()):
+            output_startswith_worded.append(player)
+        elif squashed.startswith(query_squashed):
+            output_startswith_squashed.append(player)
+        elif worded.find(query_worded) != -1:
+            output_contains_worded.append(player)
+        elif squashed.find(query_squashed) != -1:
+            output_contains_squashed.append(player)
+
+        if len(output_startswith_worded) == limit:
+            break
+
+    output = [
+        *output_startswith_worded,
+        *output_startswith_squashed,
+        *output_contains_worded,
+        *output_contains_squashed,
+    ][:limit]
+    return output

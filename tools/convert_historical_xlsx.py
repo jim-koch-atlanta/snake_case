@@ -13,10 +13,18 @@ different shape from the 2023-25 exports:
   - `Team` is the FANTASY manager, not the NFL team
   - the round comes from the separator rows, not a column
 
-Output matches the existing draft-{year}.csv columns exactly, so
-sources/historical.py reads old and new seasons the same way:
+Output matches the existing draft-{year}.csv columns, plus a `Team` column the
+2023-25 exports do not have — the fantasy MANAGER who made the pick. That is
+the input priority #7 needs to model individual drafters, so it is kept rather
+than discarded:
 
-    NO.,PLAYER,,Position,Round,Keeper
+    NO.,PLAYER,,Position,Round,Keeper,Team
+
+Keeper flags come from `data/historical/keepers.json` (year -> list of names),
+because the older sheets carry none. A name that matches two players in the
+same draft needs a position qualifier: `"Josh Allen|QB"` — 2022 drafted both a
+QB and a DE by that name. Re-running is idempotent: the flags come from the
+JSON, never from the CSV being overwritten.
 
 `PLAYER` re-joins name and NFL team with a NON-BREAKING SPACE and the third
 column (empty header) carries the clean name, both matching the 2023-25 files.
@@ -32,20 +40,26 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import re
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from sources.build_crosswalk import normalize_name as normalize
+
 ROOT = Path(__file__).resolve().parent.parent
 HISTORICAL = ROOT / "data" / "historical"
 XLSX = HISTORICAL / "Untitled spreadsheet.xlsx"
+KEEPERS_JSON = HISTORICAL / "keepers.json"
 
 NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
-ROUND_RE = re.compile(r"^Round\s+(\d+)", re.I)
+ROUND_RE = re.compile(r"^Round\s+(\d+)", re.IGNORECASE)
 PICK_NO_RE = re.compile(r"^(\d+)(?:\.0+)?$")
 #: "Derrick Henry Ten, RB" -> name / nfl team / position
 PLAYER_RE = re.compile(r"^(.*?)\s+([A-Za-z/]+)\s*,\s*([A-Za-z/]+)\s*$")
@@ -77,6 +91,35 @@ def read_sheets(path: Path) -> dict[str, list[dict[str, str]]]:
             rows.append(cells)
         out[sheet.get("name")] = rows
     return out
+
+
+def load_keeper_names(path: Path = KEEPERS_JSON) -> dict[str, list[str]]:
+    """{year: [name or "name|POS", ...]} — keeper flags for seasons lacking them."""
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text())
+
+
+def apply_keepers(picks: list[dict], wanted: list[str]) -> list[str]:
+    """Mark keepers in place. Returns problems (unmatched or ambiguous names)."""
+    problems: list[str] = []
+    index: dict[str, list[dict]] = {}
+    for pick in picks:
+        index.setdefault(normalize(pick[""]), []).append(pick)
+
+    for entry in wanted:
+        name, _, position = entry.partition("|")
+        matches = index.get(normalize(name), [])
+        if position:
+            matches = [m for m in matches if m["Position"].upper() == position.upper()]
+        if not matches:
+            problems.append(f"keeper {entry!r} not found in this draft")
+        elif len(matches) > 1:
+            where = ", ".join(f"R{m['Round']} {m['Position']}" for m in matches)
+            problems.append(f"keeper {entry!r} is ambiguous ({where}) — add |POS")
+        else:
+            matches[0]["Keeper"] = "Yes"
+    return problems
 
 
 def convert_sheet(rows: list[dict[str, str]]) -> tuple[list[dict], list[str]]:
@@ -111,9 +154,10 @@ def convert_sheet(rows: list[dict[str, str]]) -> tuple[list[dict], list[str]]:
             "": name,
             "Position": position,
             "Round": str(current_round),
-            # No keeper information exists in this spreadsheet. Left blank
-            # rather than guessed -- see docs/session-log.md.
+            # filled in from keepers.json; the sheets carry no keeper column
             "Keeper": "",
+            # the fantasy manager, kept for priority #7 (opponent priors)
+            "Team": (raw.get("C") or "").strip(),
         })
     return picks, problems
 
@@ -128,13 +172,18 @@ def main() -> int:
         print(f"missing {args.xlsx}", file=sys.stderr)
         return 1
 
-    fields = ["NO.", "PLAYER", "", "Position", "Round", "Keeper"]
+    fields = ["NO.", "PLAYER", "", "Position", "Round", "Keeper", "Team"]
+    keeper_names = load_keeper_names()
     total_problems = 0
     for year, rows in sorted(read_sheets(args.xlsx).items()):
         picks, problems = convert_sheet(rows)
+        if year in keeper_names:
+            problems.extend(apply_keepers(picks, keeper_names[year]))
         rounds = sorted({int(p["Round"]) for p in picks})
         note = "" if len(rounds) == 22 else f"  <- {len(rounds)} rounds"
-        print(f"  {year}: {len(picks)} picks, rounds {rounds[0]}-{rounds[-1]}{note}")
+        kept = sum(1 for p in picks if p["Keeper"])
+        keeper_note = f", {kept} keepers" if kept else ", no keeper data"
+        print(f"  {year}: {len(picks)} picks, rounds {rounds[0]}-{rounds[-1]}{keeper_note}{note}")
         for problem in problems:
             print(f"      ! {problem}")
         total_problems += len(problems)

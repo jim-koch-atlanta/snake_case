@@ -33,13 +33,16 @@ ALL_YEARS = (2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
 #: timing priors, because the model excludes keepers and an unflagged keeper
 #: silently inflates early-round demand.
 #:
-#: The 2016-2022 sheets have no keeper column, but the league did have keepers
-#: then: "same player, same round, consecutive years" -- exactly what a keeper
+#: 2022's flags were reconstructed by hand from Jim's records and live in
+#: data/historical/keepers.json (all 12 teams at exactly 3, verified).
+#:
+#: The 2016-2021 sheets still have no keeper column, and the league did have
+#: keepers then: "same player, same round, consecutive years" -- exactly what a keeper
 #: kept in its original round looks like -- fires 39-57 times per year in those
 #: seasons, indistinguishable from the 47-58 seen in years we know had 36.
 #: Inferring them is not good enough: calibrated against the flagged years the
 #: heuristic runs ~90% recall but only 55-70% precision.
-KEEPER_FLAGGED_YEARS = (2023, 2024, 2025)
+KEEPER_FLAGGED_YEARS = (2022, 2023, 2024, 2025)
 
 #: Safe default. Widen to ALL_YEARS once keeper flags exist for the older
 #: seasons -- see docs/session-log.md 2026-08-21.
@@ -74,6 +77,10 @@ class HistoricalPick:
     position: str  #: the NFL position as written in the file
     slot: str  #: our roster slot (DL/LB/DB/QB/RB/WR/TE/K)
     is_keeper: bool
+    #: the fantasy manager who made the pick. Present from the reconstructed
+    #: 2016-2022 files, blank in the 2023-25 exports which omit it. The input
+    #: priority #7 needs to model individual drafters.
+    team: str = ""
 
 
 def load_year(year: int, directory: Path = HISTORICAL_DIR) -> list[HistoricalPick]:
@@ -115,6 +122,7 @@ def load_year(year: int, directory: Path = HISTORICAL_DIR) -> list[HistoricalPic
                 position=position,
                 slot=slot,
                 is_keeper=bool((row.get("Keeper") or "").strip()),
+                team=(row.get("Team") or "").strip(),
             ))
 
     if not picks:

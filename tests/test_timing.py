@@ -7,6 +7,7 @@ Two functions are marked TODO in engine/timing.py. Run
 import pytest
 
 from engine.timing import (
+    TimingIndex,
     TimingPick,
     WindowStats,
     expected_taken,
@@ -130,6 +131,29 @@ def test_survival_rejects_a_zero_rank():
 
 def test_expected_taken_is_the_window_mean():
     assert expected_taken(POOL, "DL", 30, 54) == pytest.approx(4 / 3)
+
+
+def test_index_and_raw_picks_agree():
+    """A prebuilt index must answer identically to scanning raw picks."""
+    index = TimingIndex.build(POOL)
+    for slot in ("DL", "WR", "QB"):
+        for start, end in ((0, 264), (30, 54), (100, 110)):
+            assert picks_in_window(index, slot, start, end) == picks_in_window(
+                POOL, slot, start, end
+            )
+
+
+def test_index_respects_exclusive_start_inclusive_end():
+    index = TimingIndex.build(POOL)
+    assert index.count("DL", 2023, 31, 50) == 2   # 31 excluded, 40 and 50 in
+    assert index.count("DL", 2023, 30, 31) == 1   # 31 included
+    assert index.count("DL", 2025, 30, 54) == 0   # quiet season still answerable
+
+
+def test_index_knows_every_season_and_slot():
+    index = TimingIndex.build(POOL)
+    assert index.seasons == (2023, 2024, 2025)
+    assert index.slots == ("DL", "WR")
 
 
 def test_positional_demand_covers_every_slot_seen():

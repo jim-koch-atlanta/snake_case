@@ -180,7 +180,7 @@ def main() -> int:
     from itertools import pairwise
 
     from engine.schedule import build_pick_schedule, team_live_picks
-    from engine.timing import from_history, positional_demand
+    from engine.timing import TimingIndex, from_history, positional_demand
     from sources.league_config import load_league_config
 
     ap = argparse.ArgumentParser(description=main.__doc__)
@@ -190,6 +190,7 @@ def main() -> int:
 
     try:
         picks = from_history(load_drafts(), include_keepers=args.keepers)
+        index = TimingIndex.build(picks)  # built once, queried per window
         cfg = load_league_config()
     except (HistoricalError, OSError, ValueError, KeyError) as e:
         print(f"ERROR: {type(e).__name__}: {e}", file=sys.stderr)
@@ -206,7 +207,7 @@ def main() -> int:
     print(f"  {'window':<16} {'gap':>4}  " + "  ".join(f"{s:>5}" for s in slots))
     try:
         for a, b in pairwise(mine):
-            demand = positional_demand(picks, a.overall, b.overall)
+            demand = positional_demand(index, a.overall, b.overall)
             row = "  ".join(f"{demand.get(s, 0):>5.1f}" for s in slots)
             print(f"  #{a.overall:>3} -> #{b.overall:<7} {b.overall - a.overall:>4}  {row}")
     except NotImplementedError as e:

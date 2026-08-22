@@ -33,7 +33,7 @@ ALL_YEARS = (2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
 #: timing priors, because the model excludes keepers and an unflagged keeper
 #: silently inflates early-round demand.
 #:
-#: 2019-2022 flags were reconstructed by hand from Jim's records and live in
+#: 2018-2022 flags were reconstructed by hand from Jim's records and live in
 #: data/historical/keepers.json. Verified: 2020 and 2022 have all 12 teams at
 #: exactly 3; 2021 has 35 because one team kept only 2. Teams are NOT required
 #: to keep the full three, so a year that does not total 36 is not a bug.
@@ -41,13 +41,20 @@ ALL_YEARS = (2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
 #: 2020 ran 25 rounds (COVID). Harmless here: our windows never exceed 264
 #: picks, and within that range its positional counts match every other season.
 #:
-#: The 2016-2018 sheets still have no keeper column, and the league did have
+#: CAVEAT on 2018. Jim confirmed the 36 player names but not the draft slots,
+#: and by name they land 5/4/3x7/2/2/1 across teams -- more than three on two
+#: teams, which cannot be right. Harmless for timing priors, which only need to
+#: know that a pick was a keeper so it can be excluded. It WILL matter for
+#: priority #7 (opponent priors), which models individual managers. One name
+#: (Dion Lewis) is not in the 2018 draft at all, so 35 of 36 are flagged.
+#:
+#: The 2016-2017 sheets still have no keeper column, and the league did have
 #: keepers then: "same player, same round, consecutive years" -- exactly what a keeper
 #: kept in its original round looks like -- fires 39-57 times per year in those
 #: seasons, indistinguishable from the 47-58 seen in years we know had 36.
 #: Inferring them is not good enough: calibrated against the flagged years the
 #: heuristic runs ~90% recall but only 55-70% precision.
-KEEPER_FLAGGED_YEARS = (2019, 2020, 2021, 2022, 2023, 2024, 2025)
+KEEPER_FLAGGED_YEARS = (2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025)
 
 #: Safe default. Widen to ALL_YEARS once keeper flags exist for the older
 #: seasons -- see docs/session-log.md 2026-08-21.
